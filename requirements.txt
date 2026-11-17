@@ -1,0 +1,51 @@
+# Environment
+python-dotenv
+
+# LLM / LangChain
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langchain-mistralai
+
+# LangGraph
+langgraph
+
+# RAG / Documents
+pypdf
+langchain-text-splitters
+
+# Embeddings
+langchain-huggingface
+sentence-transformers
+
+# Vector Database
+qdrant-client
+langchain-qdrant
+
+# Web Search
+tavily-python
+
+# Tools / Structured Data
+pydantic
+
+# MCP
+mcp
+
+# Backend
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy
+psycopg[binary]
+
+# HTTP / API
+httpx
+
+# Testing
+pytest
+
+# Production / Utilities
+rich

@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# User uploads
+data/uploads/
+
+# Local backups
+_backup_*/
