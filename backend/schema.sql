@@ -37,3 +37,16 @@ CREATE TABLE IF NOT EXISTS documents (
     chunks       INTEGER NOT NULL,
     uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Indexes for the queries the API runs most often.
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at
+    ON research_sessions (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_session_created
+    ON research_messages (session_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_sources_message
+    ON research_sources (message_id);
+
+CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at
+    ON documents (uploaded_at DESC);

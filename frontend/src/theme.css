@@ -758,3 +758,186 @@ a.cite:hover {
     padding-left: 16px;
   }
 }
+
+/* ---------- Conversation layout ---------- */
+
+.chat-thread {
+  padding-bottom: 8px;
+}
+
+/* In a conversation the question box sticks to the bottom. */
+.composer-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding: 16px 0 20px;
+  background: linear-gradient(to top, var(--ink) 65%, transparent);
+}
+
+.composer-dock .question-form {
+  margin-top: 0;
+}
+
+.message-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.message-time {
+  color: #6f7a91;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-failed {
+  color: var(--danger);
+}
+
+/* Citation check result */
+.verify-badge {
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.7;
+  cursor: help;
+}
+
+.verify-ok {
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+
+.verify-warn {
+  background: rgba(240, 190, 110, 0.14);
+  color: #f0c27a;
+}
+
+/* ---------- Live research progress ---------- */
+
+.progress-panel {
+  margin: 8px 0 8px 52px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+}
+
+.progress-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-steps li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.progress-marker {
+  width: 8px;
+  height: 8px;
+  margin: 6px 3px 0;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.progress-steps .is-done .progress-marker {
+  background: var(--teal);
+  opacity: 0.6;
+}
+
+.progress-steps .is-active {
+  color: var(--text);
+}
+
+.progress-steps .is-active .progress-marker {
+  background: var(--teal);
+  box-shadow: 0 0 0 4px var(--teal-soft);
+  animation: rf-pulse 1.4s ease-in-out infinite;
+}
+
+.progress-items {
+  display: block;
+  overflow: hidden;
+  color: #6f7a91;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-steps .elapsed {
+  color: #6f7a91;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes rf-pulse {
+  50% {
+    box-shadow: 0 0 0 7px rgba(94, 200, 190, 0.05);
+  }
+}
+
+/* ---------- Document picker ---------- */
+
+.doc-scope-hint {
+  margin: 0 10px 8px;
+  color: #6f7a91;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.document-list li {
+  padding: 4px 4px 4px 8px;
+}
+
+.document-list li.is-selected {
+  background: rgba(94, 200, 190, 0.08);
+}
+
+.document-list label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.document-list input[type="checkbox"] {
+  flex-shrink: 0;
+  accent-color: var(--teal);
+}
+
+.document-list .history-action {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  opacity: 0.55;
+}
+
+.document-list li:hover .history-action {
+  opacity: 1;
+}
+
+@media (max-width: 800px) {
+  .progress-panel {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-steps .is-active .progress-marker {
+    animation: none;
+  }
+}

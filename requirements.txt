@@ -1,51 +1,41 @@
-# Environment
-python-dotenv
+# Runtime dependencies (versions pinned for reproducible builds).
+# For a smaller Docker image, PyTorch is installed CPU-only in the Dockerfile.
 
-# LLM / LangChain
-langchain
-langchain-core
-langchain-community
-langchain-google-genai
-langchain-mistralai
+# Config
+python-dotenv==1.2.3
 
-# LangGraph
-langgraph
+# LLMs / LangChain / LangGraph
+langchain==1.4.0
+langchain-core==1.6.3
+langchain-community==0.4.2
+langchain-google-genai==4.4.0
+langchain-mistralai==1.1.6
+langgraph==1.2.11
 
-# RAG / Documents
-pypdf
-langchain-text-splitters
+# RAG
+pypdf==6.18.1
+langchain-text-splitters==1.1.2
+langchain-huggingface==1.2.2
+sentence-transformers==6.0.1
+qdrant-client==1.19.0
+langchain-qdrant==1.1.0
 
-# Embeddings
-langchain-huggingface
-sentence-transformers
-
-# Vector Database
-qdrant-client
-langchain-qdrant
-
-# Web Search
-tavily-python
-
-# Tools / Structured Data
-pydantic
+# Web search
+tavily-python==0.8.4
 
 # MCP
-mcp
+mcp==1.30.0
 
-# Backend
-fastapi
-uvicorn[standard]
-python-multipart
+# API
+fastapi==0.143.2
+uvicorn[standard]==0.53.0
+python-multipart==0.0.32
+pydantic==2.13.5
+httpx==0.28.1
 
-# Database
-sqlalchemy
-psycopg[binary]
+# Database (psycopg for Postgres, SQLAlchemy for the LLM response cache)
+psycopg[binary]==3.3.6
+sqlalchemy==2.0.53
 
-# HTTP / API
-httpx
-
-# Testing
-pytest
-
-# Production / Utilities
-rich
+# Utilities
+rich==15.0.0

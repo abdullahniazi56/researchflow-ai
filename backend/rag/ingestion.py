@@ -41,3 +41,24 @@ def ingest_pdf(
         "pages": len(pages),
         "chunks": len(chunks),
     }
+
+
+def delete_document_chunks(document_id: str) -> None:
+    """Remove every chunk of one document from Qdrant."""
+    from qdrant_client import models
+
+    from backend.rag.vectorstore import COLLECTION_NAME, client
+
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="metadata.document_id",
+                        match=models.MatchValue(value=document_id),
+                    )
+                ]
+            )
+        ),
+    )

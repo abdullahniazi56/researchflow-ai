@@ -1,153 +1,180 @@
+"""Research building blocks: planning, retrieval, web search,
+evidence selection, answer writing and citation checking."""
 
+import logging
 import os
 import re
 
 from dotenv import load_dotenv
-from tavily import TavilyClient
+from pydantic import BaseModel, Field
+from qdrant_client import models
 from sentence_transformers import CrossEncoder
+from tavily import TavilyClient
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.tools import tool
-
-from backend.llm import llm
+from backend.llm import llm, structured_with_fallback
 from backend.rag.vectorstore import vector_store
-from prompts.research import research_prompt
+from prompts.research import answer_prompt, research_prompt
 
 load_dotenv()
+
+logger = logging.getLogger("researchflow.pipeline")
 
 
 # --------------------------------------------------
 # INITIALIZATION
 # --------------------------------------------------
 
-reranker = CrossEncoder(
-    "cross-encoder/ms-marco-MiniLM-L-6-v2"
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+
+# How many candidates to fetch from Qdrant before reranking.
+RETRIEVAL_CANDIDATES = int(os.getenv("RETRIEVAL_CANDIDATES", "10"))
+
+# Cross-encoder score above which a cited claim counts as "supported".
+CITATION_SUPPORT_THRESHOLD = float(
+    os.getenv("CITATION_SUPPORT_THRESHOLD", "0")
 )
 
-tavily = TavilyClient(
-    api_key=os.getenv("TAVILY_API_KEY")
-)
 
+def message_text(message) -> str:
+    """Get plain text from a chat model reply (str or content blocks)."""
+    content = getattr(message, "content", message)
 
-# --------------------------------------------------
-# RESEARCH PLANNING
-# --------------------------------------------------
+    if isinstance(content, str):
+        return content
 
-def create_research_plan(question: str) -> list[str]:
-    prompt = research_prompt.invoke(
-        {"question": question}
-    )
-
-    response = llm.invoke(prompt)
-    raw = response.content
-
-    if isinstance(raw, str):
-        content = raw
-
-    elif isinstance(raw, list):
-        content = "".join(
+    if isinstance(content, list):
+        return "".join(
             block.get("text", "")
-            for block in raw
-            if isinstance(block, dict)
-            and block.get("type") == "text"
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
         )
 
-    else:
-        content = str(raw)
+    return str(content)
 
-    questions = []
 
-    for line in content.splitlines():
-        q = line.strip()
+def format_history(history: list[dict] | None, max_chars: int = 600) -> str:
+    """Turn recent messages into a short text block for prompts."""
+    if not history:
+        return "(none)"
 
-        if not q:
-            continue
+    lines = []
+    for message in history:
+        role = "User" if message.get("role") == "user" else "Assistant"
+        text = re.sub(r"\s+", " ", message.get("content", "")).strip()
+        lines.append(f"{role}: {text[:max_chars]}")
 
-        # Remove common numbered-list prefixes:
-        # 1. Question
-        # 1) Question
-        # **1.** Question
-        q = re.sub(
-            r"^\s*(?:\*\*)?\d+[.)]\s*(?:\*\*)?\s*",
-            "",
-            q,
-        ).strip()
+    return "\n".join(lines)
 
-        if q:
-            questions.append(q)
 
-    # Remove duplicate questions while preserving order.
-    questions = list(dict.fromkeys(questions))
+# --------------------------------------------------
+# RESEARCH PLANNING (structured output)
+# --------------------------------------------------
 
-    return questions[:2]
+class ResearchPlan(BaseModel):
+    standalone_question: str = Field(
+        description="The user's latest message rewritten to be self-contained."
+    )
+    # Length limits are enforced in code: some providers reject
+    # minItems/maxItems in tool schemas.
+    sub_questions: list[str] = Field(
+        description="One or two focused search questions."
+    )
+
+
+planner = structured_with_fallback(ResearchPlan)
+
+
+def create_research_plan(
+    question: str,
+    history: list[dict] | None = None,
+) -> ResearchPlan:
+    prompt = research_prompt.invoke(
+        {"question": question, "history": format_history(history)}
+    )
+    plan = planner.invoke(prompt)
+
+    # Clean up and de-duplicate, keep at most two sub-questions.
+    sub_questions = list(
+        dict.fromkeys(q.strip() for q in plan.sub_questions if q.strip())
+    )[:2]
+
+    return ResearchPlan(
+        standalone_question=plan.standalone_question.strip() or question,
+        sub_questions=sub_questions or [question],
+    )
 
 
 # --------------------------------------------------
 # DOCUMENT RETRIEVAL + RERANKING
 # --------------------------------------------------
 
+def document_filter(document_ids: list[str] | None):
+    """Qdrant filter that keeps only chunks of the chosen PDFs."""
+    if not document_ids:
+        return None
+
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="metadata.document_id",
+                match=models.MatchAny(any=list(document_ids)),
+            )
+        ]
+    )
+
+
+def page_number(raw_page):
+    """PyPDF pages are zero-based; show one-based page numbers."""
+    if raw_page is None:
+        return None
+    try:
+        return int(raw_page) + 1
+    except (TypeError, ValueError):
+        return raw_page
+
+
 def retrieve_evidence(
     question: str,
     k: int = 3,
+    document_ids: list[str] | None = None,
 ) -> list[dict]:
-
+    """Vector search in Qdrant, then rerank with a cross-encoder."""
     documents = vector_store.similarity_search_with_score(
         question,
-        k=10,
+        k=RETRIEVAL_CANDIDATES,
+        filter=document_filter(document_ids),
     )
 
     if not documents:
         return []
 
-    pairs = [
-        [question, doc.page_content]
-        for doc, _score in documents
-    ]
-
+    pairs = [[question, doc.page_content] for doc, _score in documents]
     rerank_scores = reranker.predict(pairs)
 
-    ranked_documents = list(
-        zip(documents, rerank_scores)
-    )
-
-    ranked_documents.sort(
+    ranked = sorted(
+        zip(documents, rerank_scores),
         key=lambda item: item[1],
         reverse=True,
-    )
-
-    ranked_documents = ranked_documents[:k]
+    )[:k]
 
     evidence = []
 
-    for (doc, vector_score), rerank_score in ranked_documents:
-        # Support common metadata keys for the source filename.
+    for (doc, vector_score), rerank_score in ranked:
         source = (
             doc.metadata.get("filename")
             or doc.metadata.get("source")
             or "Unknown document"
         )
 
-        # Page metadata is commonly zero-based, but some ingestion
-        # pipelines store a one-based page number.
-        raw_page = doc.metadata.get("page")
-
-        if raw_page is not None:
-            try:
-                page = int(raw_page)
-
-                # Assumes the ingestion pipeline stores zero-based pages.
-                page += 1
-            except (TypeError, ValueError):
-                page = raw_page
-        else:
-            page = None
-
         evidence.append(
             {
                 "content": doc.page_content,
                 "source": source,
+                "document_id": doc.metadata.get("document_id"),
                 "url": None,
-                "page": page,
+                "page": page_number(doc.metadata.get("page")),
                 "snippet": doc.page_content[:200],
                 "vector_score": float(vector_score),
                 "rerank_score": float(rerank_score),
@@ -163,10 +190,7 @@ def retrieve_evidence(
 # --------------------------------------------------
 
 def web_search(question: str) -> list[dict]:
-    response = tavily.search(
-        query=question,
-        max_results=5,
-    )
+    response = tavily.search(query=question, max_results=5)
 
     evidence = []
 
@@ -191,32 +215,11 @@ def web_search(question: str) -> list[dict]:
 
 
 # --------------------------------------------------
-# LANGCHAIN TOOLS
-# --------------------------------------------------
-
-@tool
-def document_search(question: str) -> list[dict]:
-    """Search uploaded research documents for relevant evidence."""
-    return retrieve_evidence(question, k=3)
-
-
-@tool
-def web_search_tool(question: str) -> list[dict]:
-    """Search the web for external or current research evidence."""
-    return web_search(question)
-
-
-research_tools = [
-    document_search,
-    web_search_tool,
-]
-
-
-# --------------------------------------------------
-# EVIDENCE SELECTION
+# EVIDENCE SELECTION + CONTEXT
 # --------------------------------------------------
 
 def select_evidence(results: list) -> list[dict]:
+    """Merge worker results, drop duplicates, give each item an ID."""
     selected = []
     seen = set()
 
@@ -235,11 +238,7 @@ def select_evidence(results: list) -> list[dict]:
             if not isinstance(content, str) or not content.strip():
                 continue
 
-            key = (
-                item.get("source"),
-                item.get("url"),
-                content.strip(),
-            )
+            key = (item.get("source"), item.get("url"), content.strip())
 
             if key in seen:
                 continue
@@ -248,29 +247,20 @@ def select_evidence(results: list) -> list[dict]:
 
             evidence_item = item.copy()
             evidence_item["question"] = question
-            evidence_item["evidence_id"] = (
-                f"E{len(selected) + 1}"
-            )
+            evidence_item["evidence_id"] = f"E{len(selected) + 1}"
 
             selected.append(evidence_item)
 
     return selected
 
 
-# --------------------------------------------------
-# CONTEXT BUILDING
-# --------------------------------------------------
-
 def build_context(selected_evidence: list) -> str:
-    context_parts = []
+    parts = []
 
     for item in selected_evidence:
-        evidence_id = item["evidence_id"]
-
-        context_parts.append(
-            f"Evidence ID: [{evidence_id}]\n"
-            f"Research question: "
-            f"{item.get('question', 'Not specified')}\n"
+        parts.append(
+            f"Evidence ID: [{item['evidence_id']}]\n"
+            f"Research question: {item.get('question', 'Not specified')}\n"
             f"Source: {item.get('source') or 'Unknown'}\n"
             f"Type: {item.get('type', 'unknown')}\n"
             f"Page: {item.get('page')}\n"
@@ -278,59 +268,111 @@ def build_context(selected_evidence: list) -> str:
             f"Content: {item.get('content', '')}\n"
         )
 
-    return "\n---\n".join(context_parts)
+    return "\n---\n".join(parts)
 
 
 # --------------------------------------------------
-# ANSWER GENERATION PROMPT
+# ANSWER GENERATION
 # --------------------------------------------------
 
-answer_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """
-You are a research assistant.
-
-Answer the user's question using the supplied research evidence.
-
-Rules:
-- Ground factual claims in the supplied evidence.
-- Cite supporting claims using exact evidence IDs, such as [E1] or [E2].
-- Use only evidence IDs that appear in the supplied context.
-- Place citations immediately after the claims they support.
-- Do not invent facts, sources, URLs, or page numbers.
-- If evidence is insufficient, clearly state the limitation.
-- Distinguish supported facts from uncertainty.
-- Write a clear, well-structured answer.
-- Do not create your own source labels or citation formats.
-""",
-        ),
-        (
-            "human",
-            """
-Research question:
-{question}
-
-Research context:
-{context}
-
-Answer the question using the evidence and include citations.
-""",
-        ),
-    ]
-)
-
-
-# --------------------------------------------------
-# CITATION RESOLUTION
-# --------------------------------------------------
-
-def resolve_citations(
-    answer: str,
+def generate_answer(
+    question: str,
     selected_evidence: list,
+    history: list[dict] | None = None,
 ) -> str:
+    """Write the answer with [E#] citations (one LLM call)."""
+    if not selected_evidence:
+        return (
+            "I couldn't find any evidence for this question in your "
+            "documents or on the web, so I can't give a grounded answer."
+        )
 
+    prompt = answer_prompt.invoke(
+        {
+            "question": question,
+            "context": build_context(selected_evidence),
+            "history": format_history(history),
+        }
+    )
+
+    # One call only. If the main model fails, llm.with_fallbacks()
+    # in backend/llm.py retries once on the backup model.
+    return message_text(llm.invoke(prompt))
+
+
+# --------------------------------------------------
+# CITATION VERIFICATION (no LLM: uses the reranker)
+# --------------------------------------------------
+
+CITATION_PATTERN = re.compile(r"\[(E\d+)\]")
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def verify_citations(answer: str, selected_evidence: list) -> tuple[str, dict]:
+    """Check every cited claim against the evidence it cites.
+
+    * Citations to evidence IDs that don't exist are removed.
+    * Each cited sentence is scored against its evidence with the
+      cross-encoder. A low score means the evidence probably does not
+      support the claim.
+
+    Returns the cleaned answer and a small report for the UI.
+    """
+    evidence_map = {
+        item["evidence_id"]: item
+        for item in selected_evidence
+        if isinstance(item, dict) and item.get("evidence_id")
+    }
+
+    invalid_ids = sorted(
+        {eid for eid in CITATION_PATTERN.findall(answer) if eid not in evidence_map}
+    )
+
+    cleaned = CITATION_PATTERN.sub(
+        lambda m: m.group(0) if m.group(1) in evidence_map else "",
+        answer,
+    )
+
+    pairs = []
+    claims = []
+
+    for sentence in SENTENCE_SPLIT.split(cleaned):
+        cited_ids = [
+            eid for eid in CITATION_PATTERN.findall(sentence) if eid in evidence_map
+        ]
+        claim = CITATION_PATTERN.sub("", sentence)
+        claim = re.sub(r"\s+([.,;:!?])", r"\1", claim).strip(" -*#\t")
+
+        if not cited_ids or len(claim) < 15:
+            continue
+
+        claims.append(claim)
+        for eid in cited_ids:
+            pairs.append((len(claims) - 1, claim, evidence_map[eid]["content"]))
+
+    supported = [False] * len(claims)
+
+    if pairs:
+        scores = reranker.predict([[claim, content] for _, claim, content in pairs])
+        for (claim_index, _, _), score in zip(pairs, scores):
+            if score >= CITATION_SUPPORT_THRESHOLD:
+                supported[claim_index] = True
+
+    report = {
+        "cited_claims": len(claims),
+        "supported_claims": sum(supported),
+        "weak_claims": [c for c, ok in zip(claims, supported) if not ok][:5],
+        "removed_invalid_citations": invalid_ids,
+    }
+
+    return cleaned, report
+
+
+# --------------------------------------------------
+# CITATION RESOLUTION ([E1] -> readable source)
+# --------------------------------------------------
+
+def resolve_citations(answer: str, selected_evidence: list) -> str:
     evidence_map = {
         item["evidence_id"]: item
         for item in selected_evidence
@@ -338,31 +380,24 @@ def resolve_citations(
     }
 
     def replace_citation(match):
-        evidence_id = match.group(1)
-        item = evidence_map.get(evidence_id)
+        item = evidence_map.get(match.group(1))
 
-        # Preserve unknown IDs instead of inventing a source.
         if item is None:
             return match.group(0)
 
-        source = item.get("source") or "Unknown source"
+        source = str(item.get("source") or "Unknown source")
+        # Escape square brackets so Markdown links don't break.
+        source = source.replace("[", r"\[").replace("]", r"\]")
         url = item.get("url")
         page = item.get("page")
-        evidence_type = item.get("type")
 
-        # Escape square brackets in source titles to avoid
-        # breaking Markdown link syntax.
-        source = str(source).replace("[", r"\[").replace("]", r"\]")
-        
-        if evidence_type == "web" and url:
+        if item.get("type") == "web" and url:
             return f"[{source}]({url})"
 
-        if evidence_type == "document":
+        if item.get("type") == "document":
             citation = f"[Source: {source}"
-
             if page is not None:
                 citation += f", Page: {page}"
-
             return citation + "]"
 
         if url:
@@ -370,49 +405,4 @@ def resolve_citations(
 
         return f"[Source: {source}]"
 
-    return re.sub(
-        r"\[(E\d+)\]",
-        replace_citation,
-        answer,
-    )
-
-
-# --------------------------------------------------
-# FINAL ANSWER
-# --------------------------------------------------
-
-def generate_answer(
-    question: str,
-    selected_evidence: list,
-) -> str:
-
-    context = build_context(selected_evidence)
-
-    prompt = answer_prompt.invoke(
-        {
-            "question": question,
-            "context": context,
-        }
-    )
-
-    # One call only. If the main model fails (e.g. Gemini quota used up),
-    # llm.with_fallbacks() in backend/llm.py retries once on the backup
-    # model. Retrying Gemini here again would only waste more quota.
-    response = llm.invoke(prompt)
-
-    answer = response.content
-
-    if isinstance(answer, list):
-        answer = "".join(
-            block.get("text", "")
-            for block in answer
-            if isinstance(block, dict)
-            and block.get("type") == "text"
-        )
-    elif not isinstance(answer, str):
-        answer = str(answer)
-
-    return resolve_citations(
-        answer,
-        selected_evidence,
-    )
+    return CITATION_PATTERN.sub(replace_citation, answer)

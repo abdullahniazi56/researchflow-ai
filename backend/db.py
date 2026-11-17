@@ -295,6 +295,18 @@ def create_document(
             )
 
 
+def delete_document(document_id: str) -> str | None:
+    """Delete a document row. Returns its filename, or None if not found."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM documents WHERE document_id = %s RETURNING filename;",
+                (document_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+
+
 def list_documents():
     with get_connection() as conn:
         with conn.cursor() as cur:

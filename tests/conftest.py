@@ -17,7 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 fake_service = types.ModuleType("backend.agent.service")
 
 
-async def _fake_run_research(question: str, session_id: str) -> dict:
+async def _fake_run_research(question, session_id, history=None, document_ids=None):
     return {
         "session_id": session_id,
         "status": "completed",
@@ -26,7 +26,14 @@ async def _fake_run_research(question: str, session_id: str) -> dict:
     }
 
 
+async def _fake_stream_research(question, session_id, history=None, document_ids=None):
+    yield {"type": "step", "step": "start", "message": "Starting research"}
+    yield {"type": "result", **(await _fake_run_research(question, session_id))}
+
+
 fake_service.run_research = _fake_run_research
+fake_service.stream_research = _fake_stream_research
+fake_service.load_history = lambda session_id: []
 fake_service.save_research_answer = lambda *args, **kwargs: None
 sys.modules["backend.agent.service"] = fake_service
 
