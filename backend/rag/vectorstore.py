@@ -4,6 +4,7 @@ Every module that needs the vector store (retrieval, ingestion)
 imports it from here, so the model is configured in one place.
 """
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -13,6 +14,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "researchflow_documents")
@@ -37,10 +40,23 @@ def ensure_collection() -> None:
         )
 
 
-ensure_collection()
+# Try to prepare the collection at startup, but don't crash the whole
+# server if Qdrant is not running yet. Ingestion calls ensure_collection()
+# again, and searches will report a clear error until Qdrant is up.
+try:
+    ensure_collection()
+except Exception as exc:
+    logger.warning(
+        "Qdrant is not reachable at %s (%s). "
+        "Start Qdrant, then PDF upload and document search will work.",
+        QDRANT_URL,
+        exc,
+    )
 
 vector_store = QdrantVectorStore(
     client=client,
     collection_name=COLLECTION_NAME,
     embedding=embeddings,
+    # Skip the startup check that needs a live Qdrant connection.
+    validate_collection_config=False,
 )

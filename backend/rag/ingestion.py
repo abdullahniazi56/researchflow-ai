@@ -5,7 +5,7 @@ from pathlib import Path
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from backend.rag.vectorstore import vector_store
+from backend.rag.vectorstore import ensure_collection, vector_store
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
@@ -34,6 +34,7 @@ def ingest_pdf(
     chunks = [chunk for chunk in chunks if chunk.page_content.strip()]
 
     if chunks:
+        ensure_collection()
         vector_store.add_documents(chunks)
 
     return {

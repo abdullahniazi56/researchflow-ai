@@ -12,7 +12,6 @@ from langchain_core.tools import tool
 from backend.llm import llm
 from backend.rag.vectorstore import vector_store
 from prompts.research import research_prompt
-import time
 
 load_dotenv()
 
@@ -396,33 +395,10 @@ def generate_answer(
         }
     )
 
-    
-    max_retries = 3
-
-    for attempt in range(max_retries):
-        try:
-            response = llm.invoke(prompt)
-            break
-
-        except Exception as exc:
-            error_message = str(exc)
-
-            is_temporary_error = (
-                "503" in error_message
-                or "429" in error_message
-                or "UNAVAILABLE" in error_message
-                or "RESOURCE_EXHAUSTED" in error_message
-            )
-
-            if not is_temporary_error or attempt == max_retries - 1:
-                raise
-
-            wait_seconds = 10 * (attempt + 1)
-            print(
-                f"Gemini temporarily unavailable. "
-                f"Retrying in {wait_seconds} seconds..."
-            )
-            time.sleep(wait_seconds)
+    # One call only. If the main model fails (e.g. Gemini quota used up),
+    # llm.with_fallbacks() in backend/llm.py retries once on the backup
+    # model. Retrying Gemini here again would only waste more quota.
+    response = llm.invoke(prompt)
 
     answer = response.content
 

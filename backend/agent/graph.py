@@ -1,12 +1,11 @@
 import asyncio
+import logging
 import operator
 from typing import Annotated, TypedDict
 
 from langgraph.types import Send
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage
-
-from backend.llm import llm
+from backend.agent.routing import needs_planning, needs_web_search
 from backend.mcp.client import get_mcp_tools, close_mcp_client
 import uuid
 
@@ -106,9 +105,9 @@ def normalize_evidence(result, tool_name: str) -> list[dict]:
     return []
 
 
-mcp_tools = get_mcp_tools()
+logger = logging.getLogger("researchflow.agent")
 
-tool_enabled_llm = llm.bind_tools(mcp_tools)
+mcp_tools = get_mcp_tools()
 
 tool_map = {
     tool.name: tool
@@ -117,92 +116,69 @@ tool_map = {
 
 
 def planner_node(state: ResearchState):
-    questions = create_research_plan(
-        state["question"]
-    )
+    question = state["question"]
 
-    if not questions:
-        questions = [state["question"]]
+    # Retry rounds and simple questions don't need the planner LLM:
+    # researching the question as it is works just as well.
+    if state["research_round"] > 0 or not needs_planning(question):
+        logger.info("Planner skipped (no LLM call).")
+        return {"research_questions": [question]}
+
+    try:
+        questions = create_research_plan(question)
+    except Exception as exc:
+        # If the LLM is unavailable, still research the original question.
+        logger.warning("Planner failed, using the original question: %s", exc)
+        questions = []
 
     return {
-        "research_questions": questions
+        "research_questions": questions or [question]
     }
 
 
+async def run_tool(tool_name: str, question: str, errors: list) -> list:
+    """Call one MCP tool and return its evidence in the standard format."""
+    try:
+        result = await tool_map[tool_name].ainvoke({"question": question})
+    except Exception as exc:
+        errors.append(f"{tool_name} failed: {type(exc).__name__}: {exc}")
+        return []
+
+    if result is None:
+        errors.append(f"{tool_name} returned no result.")
+        return []
+
+    return normalize_evidence(result, tool_name)
+
+
 async def research_worker(state: dict):
+    """Collect evidence for one sub-question, without any LLM call.
+
+    1. Search the uploaded PDFs (local and free).
+    2. Search the web only if the PDFs are not relevant enough,
+       or the question is about recent events.
+    """
     question = state["question"]
-
-    instruction = (
-        f"Research the following question:\n\n"
-        f"{question}\n\n"
-        "Choose the research tools needed to collect evidence.\n"
-        "Use document retrieval for uploaded documents.\n"
-        "Use web search for external or current information, "
-        "or when document evidence is insufficient.\n"
-        "You may use one or both tools.\n"
-        "Do not write the final answer. Only collect evidence."
-    )
-
-    response = await tool_enabled_llm.ainvoke(
-        [HumanMessage(content=instruction)]
-    )
-
-    if not response.tool_calls:
-        return {
-            "results": [{
-                "question": question,
-                "evidence": [],
-                "errors": ["No research tool was selected by the LLM."],
-                "research_round": state["research_round"]
-            }]
-        }
-
-    
-    evidence = []
+    research_round = state["research_round"]
     errors = []
 
-    for tool_call in response.tool_calls[:2]:
-        tool_name = tool_call["name"]
-        arguments = tool_call["args"]
+    evidence = await run_tool("document_search", question, errors)
 
-        selected_tool = tool_map.get(tool_name)
-
-        if selected_tool is None:
-            errors.append(f"Unknown tool: {tool_name}")
-            continue
-        if not isinstance(arguments, dict):
-            errors.append(
-               f"Invalid arguments for {tool_name}: expected a dictionary."
-               )
-            continue
-        
-        try:
-            result = await selected_tool.ainvoke(arguments)
-
-            if result is None:
-                errors.append(f"{tool_name} returned no result.")
-                continue
-           
-
-            evidence.extend(
-                normalize_evidence(result, tool_name)
-            )
-
-
-        except Exception as exc:
-            errors.append(
-                f"{tool_name} failed: {type(exc).__name__}: {exc}"
-            )
+    if needs_web_search(question, evidence, research_round):
+        evidence.extend(
+            await run_tool("web_search_tool", question, errors)
+        )
+    else:
+        logger.info("Web search skipped: PDFs answered %r", question)
 
     return {
         "results": [{
             "question": question,
             "evidence": evidence,
             "errors": errors,
-            "research_round": state["research_round"]
+            "research_round": research_round,
         }]
     }
-
 
 
 def fan_out_research(state: ResearchState):

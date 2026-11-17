@@ -10,6 +10,10 @@ import {
   getDocuments,
 } from "./api";
 import "./App.css";
+import "./theme.css";
+import EvidenceBackground from "./EvidenceBackground";
+import Markdown from "./Markdown";
+import SourceList from "./SourceList";
 
 function App() {
   const [question, setQuestion] = useState("");
@@ -24,12 +28,29 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [serverOnline, setServerOnline] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     loadSessions();
     loadDocuments();
   }, []);
+
+  // Count seconds while a research request is running.
+  useEffect(() => {
+    if (!loading) return undefined;
+
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setElapsed(Math.round((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+      setElapsed(0);
+    };
+  }, [loading]);
 
   async function loadDocuments() {
     try {
@@ -80,7 +101,9 @@ function App() {
     try {
       const data = await getSessions();
       setSessions(Array.isArray(data) ? data : []);
+      setServerOnline(true);
     } catch (err) {
+      if (!err?.response) setServerOnline(false);
       console.error("Failed to load research history:", err);
     }
   }
@@ -90,6 +113,15 @@ function App() {
   }
 
   function getErrorMessage(err, fallback) {
+    // No response at all means the backend could not be reached.
+    if (err && !err.response && err.code === "ERR_NETWORK") {
+      setServerOnline(false);
+      return (
+        "Can't reach the ResearchFlow server at 127.0.0.1:8000. " +
+        "Start the backend (uvicorn backend.main:app --reload) and try again."
+      );
+    }
+
     return (
       err?.response?.data?.detail ||
       err?.message ||
@@ -226,137 +258,11 @@ function App() {
   }
 
   function renderSources(sources) {
-    if (!Array.isArray(sources) || sources.length === 0) {
-      return null;
-    }
-
-    return (
-      <section className="sources-section">
-        <h3>Sources &amp; citations</h3>
-
-        <div className="sources-grid">
-          {sources.map((source, index) => {
-            const url = source.source_url || source.url;
-
-            const name =
-              source.source_name ||
-              source.name ||
-              source.source ||
-              source.title ||
-              `Source ${index + 1}`;
-
-            const page =
-              source.page_number ?? source.page;
-
-            return (
-              <article
-                className="source-card"
-                key={`${url || name}-${index}`}
-              >
-                <span className="source-number">
-                  SOURCE {index + 1}
-                </span>
-
-                <h4>{name}</h4>
-
-                {page != null && (
-                  <p className="source-meta">
-                    Page: {page}
-                  </p>
-                )}
-
-                {url ? (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Open source ↗
-                  </a>
-                ) : (
-                  <p className="source-meta">
-                    No source URL available
-                  </p>
-                )}
-
-                {source.snippet && (
-                  <p className="source-snippet">
-                    {source.snippet}
-                  </p>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
-    );
+    return <SourceList items={sources} />;
   }
 
   function renderEvidence(evidence) {
-    if (!Array.isArray(evidence) || evidence.length === 0) {
-      return null;
-    }
-
-    return (
-      <section className="sources-section">
-        <h3>Research evidence</h3>
-
-        <div className="sources-grid">
-          {evidence.map((item, index) => {
-            const url = item.url || item.source_url;
-
-            const name =
-              item.source ||
-              item.source_name ||
-              item.title ||
-              `Evidence ${index + 1}`;
-
-            const page = item.page ?? item.page_number;
-
-            return (
-              <article
-                className="source-card"
-                key={`${url || name}-${index}`}
-              >
-                <span className="source-number">
-                  EVIDENCE {index + 1}
-                </span>
-
-                <h4>{name}</h4>
-
-                {item.type && (
-                  <p className="source-meta">
-                    Type: {item.type}
-                  </p>
-                )}
-
-                {page != null && (
-                  <p className="source-meta">
-                    Page: {page}
-                  </p>
-                )}
-
-                {url && (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Open source ↗
-                  </a>
-                )}
-
-                {(item.content || item.snippet) && (
-                  <p className="source-snippet">
-                    {item.content || item.snippet}
-                  </p>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
-    );
+    return <SourceList items={evidence} />;
   }
 
   function renderMessage(message, index) {
@@ -389,9 +295,15 @@ function App() {
             </strong>
           </div>
 
-          <div className="message-content">
-            {content}
-          </div>
+          {isAssistant ? (
+            <div className="message-content answer-text">
+              <Markdown text={content} />
+            </div>
+          ) : (
+            <div className="message-content user-question">
+              {content}
+            </div>
+          )}
 
           {isAssistant && renderSources(message.sources)}
         </div>
@@ -401,6 +313,8 @@ function App() {
 
   return (
     <div className="app-shell">
+      <EvidenceBackground />
+
       {sidebarOpen && (
         <button
           className="mobile-backdrop"
@@ -430,7 +344,7 @@ function App() {
         </button>
 
         <div className="sidebar-section">
-          <p className="section-label">WORKSPACE</p>
+          <p className="section-label">Workspace</p>
 
           <button
             className={`sidebar-link ${
@@ -443,7 +357,7 @@ function App() {
           </button>
 
           <div className="history-heading">
-            <p className="section-label">RECENT RESEARCH</p>
+            <p className="section-label">Recent research</p>
             <span>{sessions.length}</span>
           </div>
 
@@ -513,45 +427,21 @@ function App() {
 
         <div className="sidebar-section">
           <div className="history-heading">
-            <p className="section-label">DOCUMENTS</p>
+            <p className="section-label">Documents</p>
             <span>{documents.length}</span>
           </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileChange}
-            hidden
-          />
-
-          <button
-            type="button"
-            className="secondary-button upload-button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? "Uploading…" : "📎 Upload PDF"}
-          </button>
-
-          {uploadMessage && (
-            <p className="upload-status">{uploadMessage}</p>
-          )}
-
-          {uploadError && (
-            <p className="upload-error">{uploadError}</p>
-          )}
-
           {documents.length === 0 ? (
             <p className="history-empty">
-              Uploaded PDFs will appear here.
+              Attach a PDF next to the question box. It will be
+              searched with every question.
             </p>
           ) : (
             <ul className="document-list">
               {documents.map((doc) => (
                 <li key={doc.document_id} title={doc.filename}>
                   <span className="document-name">
-                    📄 {doc.filename}
+                    {doc.filename}
                   </span>
                   <small>{doc.pages} pages</small>
                 </li>
@@ -561,8 +451,7 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
-          <span className="footer-status-dot" />
-          AI-powered research workspace
+          Answers cite your PDFs and the web
         </div>
       </aside>
 
@@ -580,9 +469,17 @@ function App() {
             Research workspace
           </div>
 
-          <div className="status">
+          <div
+            className={`status ${
+              serverOnline === false ? "status-offline" : ""
+            }`}
+          >
             <span className="status-dot" />
-            Research assistant
+            {serverOnline === false
+              ? "Server offline"
+              : serverOnline
+                ? "Server connected"
+                : "Connecting…"}
           </div>
         </header>
 
@@ -634,21 +531,16 @@ function App() {
             <div className="research-view">
               {!research && (
                 <div className="welcome-content">
-                  <div className="welcome-icon">✳</div>
-
-                  <p className="eyebrow">
-                    YOUR AI RESEARCH ASSISTANT
-                  </p>
-
                   <h1>
-                    Research smarter.
+                    Ask a question.
                     <br />
-                    <span>Discover more.</span>
+                    Get an answer you can check.
                   </h1>
 
                   <p className="description">
-                    Ask a question and let ResearchFlow AI investigate,
-                    gather evidence, and generate a source-backed answer.
+                    ResearchFlow searches your PDFs and the web, then
+                    writes an answer where every claim links back to
+                    its source.
                   </p>
                 </div>
               )}
@@ -691,7 +583,7 @@ function App() {
 
                         {research.answer ? (
                           <div className="message-content answer-text">
-                            {research.answer}
+                            <Markdown text={research.answer} />
                           </div>
                         ) : (
                           <div className="message-content">
@@ -711,7 +603,10 @@ function App() {
                     <span className="loading-spinner" />
                     {research
                       ? "Updating research…"
-                      : "Researching your question…"}
+                      : "Planning, searching your PDFs and the web, then writing the answer…"}
+                    {elapsed > 0 && (
+                      <span className="elapsed">{elapsed}s</span>
+                    )}
                   </div>
                 )}
 
@@ -721,48 +616,6 @@ function App() {
                   </p>
                 )}
               </div>
-
-              {!research && !loading && (
-                <div className="suggestions">
-                  <p className="section-label">NEED AN IDEA?</p>
-
-                  <button
-                    onClick={() =>
-                      setQuestion(
-                        "Explain the latest advances in RAG systems."
-                      )
-                    }
-                  >
-                    <span>✳</span>
-                    Latest advances in RAG
-                    <b>↗</b>
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      setQuestion(
-                        "Compare popular vector databases for AI applications."
-                      )
-                    }
-                  >
-                    <span>◈</span>
-                    Compare vector databases
-                    <b>↗</b>
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      setQuestion(
-                        "Research practical applications of AI agents."
-                      )
-                    }
-                  >
-                    <span>⌘</span>
-                    Applications of AI agents
-                    <b>↗</b>
-                  </button>
-                </div>
-              )}
 
               <form
                 className="question-form"
@@ -780,11 +633,63 @@ function App() {
                 />
 
                 <div className="form-bottom">
-                  <span>
-                    {loading
-                      ? "Please wait…"
-                      : "Clear questions lead to better research."}
-                  </span>
+                  <div className="form-tools">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf"
+                      onChange={handleFileChange}
+                      hidden
+                    />
+
+                    <button
+                      type="button"
+                      className="attach-button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      title="Attach a PDF (max 20 MB)"
+                    >
+                      {uploading ? (
+                        <>
+                          <span className="button-spinner" />
+                          Uploading
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+                          </svg>
+                          Attach PDF
+                        </>
+                      )}
+                    </button>
+
+                    {uploadError ? (
+                      <span className="upload-error" role="alert">
+                        {uploadError}
+                      </span>
+                    ) : uploadMessage ? (
+                      <span className="upload-status">
+                        {uploadMessage}
+                      </span>
+                    ) : (
+                      <span className="form-hint">
+                        {loading
+                          ? "Researching… this can take a minute."
+                          : "Searches your PDFs and the web."}
+                      </span>
+                    )}
+                  </div>
 
                   <button
                     className="primary-button"
@@ -797,9 +702,7 @@ function App() {
                         Processing
                       </>
                     ) : (
-                      <>
-                        Start research <span>→</span>
-                      </>
+                      "Start research"
                     )}
                   </button>
                 </div>

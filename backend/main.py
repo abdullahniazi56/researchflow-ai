@@ -1,5 +1,7 @@
 
+import asyncio
 import hashlib
+import logging
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +16,7 @@ from backend.agent.service import (
     save_research_answer,
 )
 from backend.rag.ingestion import ingest_pdf
+from backend.mcp.client import mcp_client
 
 from backend.db import (
     get_research_session,
@@ -38,11 +41,30 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
+logger = logging.getLogger("researchflow")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create any missing database tables when the server starts.
     init_db()
+
+    # Warm up the MCP tool server in the background: the API is usable
+    # right away, and the models are usually loaded before the first
+    # question arrives.
+    async def warm_up_tools():
+        try:
+            await mcp_client.start()
+            logger.warning("MCP tool server is ready.")
+        except Exception as exc:
+            logger.warning("MCP tool server could not start yet: %s", exc)
+
+    warm_up = asyncio.create_task(warm_up_tools())
+
     yield
+
+    warm_up.cancel()
+    await mcp_client.close()
 
 
 app = FastAPI(
@@ -83,7 +105,7 @@ class ResearchResponse(BaseModel):
     message: str
     session_id: str
     question: str
-    status: Literal["completed", "stopped"]
+    status: Literal["completed", "stopped", "failed"]
     answer: str | None = None
     selected_evidence: list[dict] = []
 
@@ -190,6 +212,8 @@ async def create_research_request(body: ResearchRequest):
 
     if result["status"] == "completed":
         message = "Research completed."
+    elif result["status"] == "failed":
+        message = result["message"]
     else:
         message = "Research stopped before an answer was generated."
 
@@ -240,7 +264,15 @@ def upload_document(file: UploadFile = File(...)):
     # 4. Duplicate check (same content = same hash, whatever the name)
     file_hash = hashlib.sha256(contents).hexdigest()
 
-    if document_exists(file_hash):
+    try:
+        already_uploaded = document_exists(file_hash)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database is not available: {exc}",
+        )
+
+    if already_uploaded:
         raise HTTPException(
             status_code=409,
             detail="This document has already been uploaded.",
@@ -257,6 +289,16 @@ def upload_document(file: UploadFile = File(...)):
         result = ingest_pdf(save_path, filename, document_id)
     except Exception as exc:
         save_path.unlink(missing_ok=True)
+
+        if "refused" in str(exc).lower() or "connect" in str(exc).lower():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The vector database (Qdrant) is not running on port 6333. "
+                    "Start Qdrant and upload again."
+                ),
+            )
+
         raise HTTPException(
             status_code=500,
             detail=f"Could not process this PDF: {exc}",
@@ -273,13 +315,19 @@ def upload_document(file: UploadFile = File(...)):
         )
 
     # 7. Remember the document
-    create_document(
-        document_id,
-        filename,
-        file_hash,
-        result["pages"],
-        result["chunks"],
-    )
+    try:
+        create_document(
+            document_id,
+            filename,
+            file_hash,
+            result["pages"],
+            result["chunks"],
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"PDF was indexed but could not be saved to the database: {exc}",
+        )
 
     return {
         "document_id": document_id,

@@ -42,4 +42,5 @@ class FakeVectorStore:
 
 fake_vectorstore = types.ModuleType("backend.rag.vectorstore")
 fake_vectorstore.vector_store = FakeVectorStore()
+fake_vectorstore.ensure_collection = lambda: None
 sys.modules["backend.rag.vectorstore"] = fake_vectorstore

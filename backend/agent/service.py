@@ -23,7 +23,26 @@ async def run_research(question: str, session_id: str) -> dict:
         "research_round": 0,
     }
 
-    result = await app.ainvoke(initial_state)
+    try:
+        result = await app.ainvoke(initial_state)
+    except Exception as exc:
+        text = str(exc)
+        quota = any(
+            marker in text
+            for marker in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit")
+        )
+        return {
+            "session_id": session_id,
+            "status": "failed",
+            "message": (
+                "The AI model's quota is used up for now. "
+                "Try again later, or set LLM_PROVIDER=mistral in .env."
+                if quota
+                else f"Research failed: {type(exc).__name__}: {exc}"
+            ),
+            "answer": None,
+            "selected_evidence": [],
+        }
 
     return {
         "session_id": session_id,

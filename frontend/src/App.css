@@ -945,57 +945,6 @@ button:disabled {
 
 }
 
-/* Documents */
-
-.upload-button {
-  width: 100%;
-  margin: 8px 0;
-}
-
-.upload-status,
-.upload-error {
-  margin: 4px 0 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.upload-status {
-  color: #8fc79a;
-}
-
-.upload-error {
-  color: #e58c8c;
-}
-
-.document-list {
-  max-height: 180px;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.document-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 4px;
-  font-size: 12px;
-}
-
-.document-name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.document-list small {
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
 /* Respect reduced-motion preferences */
 
 @media (prefers-reduced-motion: reduce) {

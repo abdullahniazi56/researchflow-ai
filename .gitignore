@@ -16,3 +16,6 @@ data/uploads/
 
 # Local backups
 _backup_*/
+
+# LLM response cache
+.llm_cache.db
