@@ -1,5 +1,6 @@
 import Markdown from "../Markdown";
 import SourceList from "../SourceList";
+import { ShieldIcon } from "./Icons";
 
 function VerificationBadge({ verification }) {
   if (!verification || !verification.cited_claims) return null;
@@ -16,45 +17,35 @@ function VerificationBadge({ verification }) {
           : `Check these claims:\n${(verification.weak_claims || []).join("\n")}`
       }
     >
+      <ShieldIcon size={12} />
       {supported}/{cited} citations verified
     </span>
   );
 }
 
 export default function Message({ message }) {
-  const isAssistant = message.role === "assistant";
+  if (message.role !== "assistant") {
+    return (
+      <article className="msg msg-user">
+        <div className="msg-bubble">{message.content}</div>
+      </article>
+    );
+  }
 
   return (
-    <article
-      className={`chat-message ${isAssistant ? "assistant-message" : "user-message"}`}
-    >
-      <div className={`message-avatar ${isAssistant ? "assistant-avatar" : ""}`}>
-        {isAssistant ? "✳" : "You"}
+    <article className={`msg msg-assistant ${message.failed ? "is-failed" : ""}`}>
+      <header className="msg-header">
+        <span className="msg-orb" aria-hidden="true" />
+        <strong>ResearchFlow</strong>
+        <VerificationBadge verification={message.verification} />
+        {message.seconds != null && <span className="msg-time">{message.seconds}s</span>}
+      </header>
+
+      <div className="msg-answer">
+        <Markdown text={message.content} />
       </div>
 
-      <div className="message-body">
-        <div className="message-heading">
-          <strong>{isAssistant ? "ResearchFlow AI" : "You"}</strong>
-          {isAssistant && <VerificationBadge verification={message.verification} />}
-          {isAssistant && message.seconds != null && (
-            <span className="message-time">{message.seconds}s</span>
-          )}
-        </div>
-
-        {isAssistant ? (
-          <div
-            className={`message-content answer-text ${
-              message.failed ? "answer-failed" : ""
-            }`}
-          >
-            <Markdown text={message.content} />
-          </div>
-        ) : (
-          <div className="message-content user-question">{message.content}</div>
-        )}
-
-        {isAssistant && <SourceList items={message.sources} />}
-      </div>
+      <SourceList items={message.sources} />
     </article>
   );
 }

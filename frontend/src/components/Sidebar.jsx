@@ -1,8 +1,11 @@
-/* Navigation: new research, past sessions and uploaded PDFs. */
+import { ClockIcon, FileIcon, PenIcon, PlusIcon, TrashIcon } from "./Icons";
+
+/* Floating glass navigation: new research, history and documents. */
 
 export default function Sidebar({
   open,
   busy,
+  serverOnline,
   sessions,
   activeSessionId,
   documents,
@@ -17,34 +20,38 @@ export default function Sidebar({
   return (
     <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
       <div className="brand">
-        <div className="brand-mark">✳</div>
-        <span>
-          ResearchFlow <b>AI</b>
-        </span>
+        <span className="brand-orb" aria-hidden="true" />
+        <span className="brand-name">ResearchFlow</span>
+        <span className="brand-tag">AI</span>
       </div>
 
       <button className="new-research" onClick={onNew} disabled={busy}>
-        <span>＋</span> New research
+        <PlusIcon size={16} />
+        New research
       </button>
 
-      <div className="sidebar-section">
-        <div className="history-heading">
-          <p className="section-label">Recent research</p>
-          <span>{sessions.length}</span>
-        </div>
+      <section className="nav-section">
+        <header className="nav-heading">
+          <ClockIcon size={14} />
+          <span>Recent research</span>
+          <span className="nav-count">{sessions.length}</span>
+        </header>
 
         <div className="history-list">
           {sessions.length === 0 ? (
-            <p className="history-empty">Your research sessions will appear here.</p>
+            <p className="nav-empty">Your research sessions will appear here.</p>
           ) : (
             sessions.map((session) => {
               const title = session.title || "Untitled research";
               const isActive = session.session_id === activeSessionId;
 
               return (
-                <div className="history-row" key={session.session_id}>
+                <div
+                  className={`history-row ${isActive ? "is-active" : ""}`}
+                  key={session.session_id}
+                >
                   <button
-                    className={`history-item ${isActive ? "active" : ""}`}
+                    className="history-item"
                     onClick={() => onOpenSession(session)}
                     disabled={busy}
                     title={title}
@@ -52,24 +59,24 @@ export default function Sidebar({
                     <span className="history-title">{title}</span>
                   </button>
 
-                  <div className="history-actions">
+                  <div className="row-actions">
                     <button
-                      className="history-action"
+                      className="icon-button"
                       onClick={() => onRenameSession(session)}
                       disabled={busy}
-                      title="Rename"
                       aria-label={`Rename ${title}`}
+                      title="Rename"
                     >
-                      ✎
+                      <PenIcon size={13} />
                     </button>
                     <button
-                      className="history-action delete-action"
+                      className="icon-button danger"
                       onClick={() => onDeleteSession(session)}
                       disabled={busy}
-                      title="Delete"
                       aria-label={`Delete ${title}`}
+                      title="Delete"
                     >
-                      ×
+                      <TrashIcon size={13} />
                     </button>
                   </div>
                 </div>
@@ -77,32 +84,29 @@ export default function Sidebar({
             })
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="sidebar-section">
-        <div className="history-heading">
-          <p className="section-label">Documents</p>
-          <span>{documents.length}</span>
-        </div>
+      <section className="nav-section">
+        <header className="nav-heading">
+          <FileIcon size={14} />
+          <span>Documents</span>
+          <span className="nav-count">{documents.length}</span>
+        </header>
 
         {documents.length === 0 ? (
-          <p className="history-empty">
+          <p className="nav-empty">
             Attach a PDF from the question box. It is searched with every question.
           </p>
         ) : (
           <>
             <p className="doc-scope-hint">
               {selectedDocIds.length
-                ? `Searching ${selectedDocIds.length} selected PDF${
-                    selectedDocIds.length > 1 ? "s" : ""
-                  }`
-                : "Searching all PDFs. Tick some to narrow the search."}
+                ? `Searching ${selectedDocIds.length} selected`
+                : "Searching all. Tick to narrow."}
             </p>
-
             <ul className="document-list">
               {documents.map((doc) => {
                 const checked = selectedDocIds.includes(doc.document_id);
-
                 return (
                   <li key={doc.document_id} className={checked ? "is-selected" : ""}>
                     <label title={doc.filename}>
@@ -112,17 +116,18 @@ export default function Sidebar({
                         onChange={() => onToggleDocument(doc.document_id)}
                         disabled={busy}
                       />
+                      <span className="doc-check" aria-hidden="true" />
                       <span className="document-name">{doc.filename}</span>
                     </label>
-                    <small>{doc.pages} p.</small>
+                    <span className="doc-pages">{doc.pages}p</span>
                     <button
-                      className="history-action delete-action"
+                      className="icon-button danger"
                       onClick={() => onDeleteDocument(doc)}
                       disabled={busy}
-                      title="Delete PDF"
                       aria-label={`Delete ${doc.filename}`}
+                      title="Delete PDF"
                     >
-                      ×
+                      <TrashIcon size={13} />
                     </button>
                   </li>
                 );
@@ -130,9 +135,19 @@ export default function Sidebar({
             </ul>
           </>
         )}
-      </div>
+      </section>
 
-      <div className="sidebar-footer">Answers cite your PDFs and the web</div>
+      <footer className={`sidebar-footer ${serverOnline === false ? "is-offline" : ""}`}>
+        <span className="live-dot" aria-hidden="true" />
+        <span>
+          {serverOnline === false
+            ? "Agent offline"
+            : serverOnline
+              ? "Agent online"
+              : "Connecting…"}
+        </span>
+        <span className="footer-meta">PDF · Web · MCP</span>
+      </footer>
     </aside>
   );
 }

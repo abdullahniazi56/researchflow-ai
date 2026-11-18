@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteDocument,
   deleteSession,
@@ -14,11 +14,13 @@ import Composer from "./components/Composer";
 import Message from "./components/Message";
 import ProgressSteps from "./components/ProgressSteps";
 import Sidebar from "./components/Sidebar";
-import EvidenceBackground from "./EvidenceBackground";
+import { GlobeIcon, LayersIcon, MenuIcon, ShieldIcon } from "./components/Icons";
 import "./App.css";
-import "./theme.css";
 
-const DEFAULT_HINT = { kind: "hint", text: "Searches your PDFs and the web." };
+// The 3D scene (Three.js) loads as a separate chunk, so the UI appears instantly.
+const CoreScene = lazy(() => import("./scene/CoreScene"));
+
+const DEFAULT_HINT = { kind: "hint", text: "Enter to send · Shift+Enter for a new line" };
 
 function App() {
   // Sidebar data
@@ -305,10 +307,17 @@ function App() {
   // ---------- Render ----------
 
   const hasConversation = messages.length > 0 || loading;
+  const sceneMode = loading ? "busy" : hasConversation ? "reading" : "idle";
+  const scopeLabel = selectedDocIds.length
+    ? `${selectedDocIds.length} PDF${selectedDocIds.length > 1 ? "s" : ""} + web`
+    : "All PDFs + web";
 
   return (
-    <div className="app-shell">
-      <EvidenceBackground />
+    <div className={`app-shell ${hasConversation ? "has-conversation" : "is-home"}`}>
+      <Suspense fallback={null}>
+        <CoreScene mode={sceneMode} />
+      </Suspense>
+      <div className="scene-vignette" aria-hidden="true" />
 
       {sidebarOpen && (
         <button
@@ -321,6 +330,7 @@ function App() {
       <Sidebar
         open={sidebarOpen}
         busy={loading}
+        serverOnline={serverOnline}
         sessions={sessions}
         activeSessionId={activeSessionId}
         documents={documents}
@@ -336,52 +346,59 @@ function App() {
       <main className="main-panel">
         <header className="topbar">
           <button
-            className="mobile-menu"
+            className="mobile-menu icon-button"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open navigation"
           >
-            ☰
+            <MenuIcon size={18} />
           </button>
 
-          <div className="topbar-title">
-            {activeTitle || "Research workspace"}
-          </div>
+          <nav className="crumbs" aria-label="Location">
+            <span>Workspace</span>
+            <span className="crumb-sep">/</span>
+            <span className="crumb-current">{activeTitle || "New research"}</span>
+          </nav>
 
-          <div className={`status ${serverOnline === false ? "status-offline" : ""}`}>
-            <span className="status-dot" />
+          <div className={`status-pill ${serverOnline === false ? "is-offline" : ""}`}>
+            <span className="live-dot" aria-hidden="true" />
             {serverOnline === false
               ? "Server offline"
-              : serverOnline
-                ? "Server connected"
-                : "Connecting…"}
+              : loading
+                ? "Researching"
+                : serverOnline
+                  ? "Ready"
+                  : "Connecting"}
           </div>
         </header>
 
         <section className="workspace">
           {!hasConversation && (
-            <div className="welcome-content">
-              <h1>
-                Ask a question.
-                <br />
-                Get an answer you can check.
+            <div className="hero">
+              <h1 className="hero-title">
+                <span className="hero-line">Ask a question.</span>
+                <span className="hero-line hero-line-accent">Get an answer you can check.</span>
               </h1>
-              <p className="description">
-                ResearchFlow searches your PDFs and the web, then writes an
-                answer where every claim links back to its source.
+              <p className="hero-sub">
+                ResearchFlow searches your PDFs and the web, then writes an answer
+                where every claim links back to its source.
               </p>
             </div>
           )}
 
           {hasConversation && (
-            <div className="chat-thread">
+            <div className="thread">
               {messages.map((message, index) => (
                 <Message key={message.id ?? index} message={message} />
               ))}
 
               {loading && (
-                <div className="progress-panel">
+                <div className="agent-panel">
+                  <div className="agent-panel-head">
+                    <span className="msg-orb is-busy" aria-hidden="true" />
+                    <strong>Agent at work</strong>
+                  </div>
                   <ProgressSteps
-                    steps={steps.length ? steps : [{ step: "start", message: "Connecting" }]}
+                    steps={steps.length ? steps : [{ step: "start", message: "Connecting to the agent" }]}
                     elapsed={elapsed}
                   />
                 </div>
@@ -392,15 +409,17 @@ function App() {
 
           {error && (
             <div className="error-panel" role="alert">
-              <strong>Something went wrong</strong>
-              <p>{error}</p>
-              <button className="secondary-button" onClick={() => setError("")}>
+              <div>
+                <strong>Something went wrong</strong>
+                <p>{error}</p>
+              </div>
+              <button className="ghost-button" onClick={() => setError("")}>
                 Dismiss
               </button>
             </div>
           )}
 
-          <div className={hasConversation ? "composer-dock" : ""}>
+          <div className={hasConversation ? "composer-dock" : "composer-home"}>
             <Composer
               value={question}
               onChange={setQuestion}
@@ -409,18 +428,18 @@ function App() {
               loading={loading}
               uploading={uploading}
               onAttach={handleAttach}
-              status={
-                selectedDocIds.length && composerStatus === DEFAULT_HINT
-                  ? {
-                      kind: "hint",
-                      text: `Searching ${selectedDocIds.length} selected PDF${
-                        selectedDocIds.length > 1 ? "s" : ""
-                      } and the web.`,
-                    }
-                  : composerStatus
-              }
+              status={composerStatus}
+              scopeLabel={scopeLabel}
               isFollowUp={Boolean(activeSessionId)}
             />
+
+            {!hasConversation && (
+              <ul className="capabilities">
+                <li><LayersIcon size={15} /> Your PDFs and the live web</li>
+                <li><ShieldIcon size={15} /> Every citation checked</li>
+                <li><GlobeIcon size={15} /> Watch the agent work, step by step</li>
+              </ul>
+            )}
           </div>
         </section>
       </main>

@@ -1,33 +1,39 @@
-/* Live research progress, fed by the streaming endpoint. */
+import { CheckIcon, PenIcon, SearchIcon, ShieldIcon, SparkIcon } from "./Icons";
+
+/* Live agent timeline, fed by the streaming endpoint. */
+
+const STEP_ICONS = {
+  start: SparkIcon,
+  plan: SparkIcon,
+  search: SearchIcon,
+  write: PenIcon,
+  verify: ShieldIcon,
+};
 
 export default function ProgressSteps({ steps, elapsed }) {
   if (!steps.length) return null;
 
   return (
-    <ol className="progress-steps" aria-live="polite">
+    <ol className="agent-timeline" aria-live="polite">
       {steps.map((step, index) => {
-        const isLast = index === steps.length - 1;
+        const isActive = index === steps.length - 1;
+        const Icon = isActive ? STEP_ICONS[step.step] || SparkIcon : CheckIcon;
+        const detail = step.items?.length
+          ? step.step === "search"
+            ? step.items[0]
+            : step.items.join(" · ")
+          : "";
 
         return (
-          <li
-            key={`${step.step}-${index}`}
-            className={isLast ? "is-active" : "is-done"}
-          >
-            <span className="progress-marker" aria-hidden="true" />
-            <span className="progress-text">
-              {step.message}
-              {step.items?.length > 0 && step.step !== "search" && (
-                <span className="progress-items">
-                  {step.items.join(" · ")}
-                </span>
-              )}
-              {step.step === "search" && step.items?.[0] && (
-                <span className="progress-items">{step.items[0]}</span>
-              )}
+          <li key={`${step.step}-${index}`} className={isActive ? "is-active" : "is-done"}>
+            <span className="timeline-node">
+              <Icon size={13} />
             </span>
-            {isLast && elapsed > 0 && (
-              <span className="elapsed">{elapsed}s</span>
-            )}
+            <div className="timeline-body">
+              <span className="timeline-title">{step.message}</span>
+              {detail && <span className="timeline-detail">{detail}</span>}
+            </div>
+            {isActive && elapsed > 0 && <span className="timeline-time">{elapsed}s</span>}
           </li>
         );
       })}

@@ -2,9 +2,9 @@
   "summary": {
     "retrieval": {
       "questions": 16,
-      "hit@1": 0.8125,
-      "hit@3": 0.875,
-      "mrr": 0.8333333333333334
+      "hit@1": 0.875,
+      "hit@3": 0.9375,
+      "mrr": 0.90625
     }
   },
   "questions": [
@@ -14,28 +14,28 @@
       "rank": 1,
       "top": [
         "nike.pdf p.4",
-        "nike.pdf p.4",
+        "nike.pdf p.2",
         "nike.pdf p.3"
       ]
     },
     {
       "id": "nike-02",
       "question": "What was Nike's original company name?",
-      "rank": null,
+      "rank": 1,
       "top": [
         "nike.pdf p.3",
-        "nike.pdf p.3",
-        "nike.pdf p.3"
+        "nike.pdf p.34",
+        "nike.pdf p.29"
       ]
     },
     {
       "id": "nike-03",
       "question": "Who is Nike's president and CEO?",
-      "rank": 3,
+      "rank": 2,
       "top": [
         "nike.pdf p.5",
-        "nike.pdf p.5",
-        "nike.pdf p.6"
+        "nike.pdf p.6",
+        "nike.pdf p.36"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "question": "What was Nike's revenue in 2025?",
       "rank": null,
       "top": [
-        "nike.pdf p.8",
+        "nike.pdf p.3",
         "nike.pdf p.8",
         "nike.pdf p.8"
       ]
@@ -54,7 +54,7 @@
       "rank": 1,
       "top": [
         "nike.pdf p.11",
-        "nike.pdf p.11",
+        "nike.pdf p.18",
         "nike.pdf p.18"
       ]
     },
@@ -64,8 +64,8 @@
       "rank": 1,
       "top": [
         "nike.pdf p.24",
-        "nike.pdf p.24",
-        "nike.pdf p.25"
+        "nike.pdf p.25",
+        "nike.pdf p.23"
       ]
     },
     {
@@ -75,7 +75,7 @@
       "top": [
         "nike.pdf p.6",
         "nike.pdf p.6",
-        "nike.pdf p.37"
+        "nike.pdf p.8"
       ]
     },
     {
@@ -94,7 +94,7 @@
       "rank": 1,
       "top": [
         "puma.pdf p.1",
-        "puma.pdf p.1",
+        "puma.pdf p.2",
         "puma.pdf p.1"
       ]
     },
@@ -105,7 +105,7 @@
       "top": [
         "puma.pdf p.3",
         "puma.pdf p.3",
-        "puma.pdf p.3"
+        "puma.pdf p.8"
       ]
     },
     {
@@ -114,7 +114,7 @@
       "rank": 1,
       "top": [
         "puma.pdf p.5",
-        "puma.pdf p.5",
+        "puma.pdf p.14",
         "puma.pdf p.4"
       ]
     },
@@ -124,7 +124,7 @@
       "rank": 1,
       "top": [
         "puma.pdf p.5",
-        "puma.pdf p.5",
+        "puma.pdf p.14",
         "puma.pdf p.14"
       ]
     },
@@ -134,7 +134,7 @@
       "rank": 1,
       "top": [
         "puma.pdf p.6",
-        "puma.pdf p.6",
+        "puma.pdf p.10",
         "puma.pdf p.10"
       ]
     },
@@ -155,7 +155,7 @@
       "top": [
         "sample.pdf p.2",
         "sample.pdf p.2",
-        "sample.pdf p.2"
+        "sample.pdf p.1"
       ]
     },
     {

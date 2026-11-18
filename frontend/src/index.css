@@ -1,7 +1,6 @@
-/* Base reset. All app styling lives in App.css and theme.css. */
-
+/* Base reset; the design system lives in App.css. */
 html,
 body {
   margin: 0;
-  background: #0d1322;
+  background: #05070d;
 }

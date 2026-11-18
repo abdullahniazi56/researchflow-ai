@@ -109,13 +109,21 @@ It measures:
 
 The report is written to `eval/results/report.md`.
 
-<!-- After running the evaluation, paste the summary table here, e.g.
-| Metric | Score |
-|---|---|
-| Hit@3 | …% |
-| Answer accuracy | …% |
-| Citation support rate | …% |
--->
+### Results (retrieval, 16 questions, top-3)
+
+| Metric | First run | After fixes |
+|---|---|---|
+| Hit@1 | 81.3% | **87.5%** |
+| Hit@3 | 87.5% | **93.8%** |
+| MRR | 0.83 | **0.91** |
+
+What the evaluation found and what changed:
+
+- **Duplicate chunks.** The report showed the same page three times in the top 3 (`p.3, p.3, p.3`). An old ingestion script had left a complete second copy of the corpus in Qdrant (178 chunks without a `document_id`). Retrieval now de-duplicates candidates before reranking, and `scripts/clean_index.py` removes such legacy chunks.
+- **A labeling error.** One "miss" was correct: the answer also appears on a page the eval set didn't list. The dataset was fixed, which is a reminder that eval sets need review too.
+- **Known failure: infobox numbers.** *"What was Nike's revenue in 2025?"* is answered in the Wikipedia infobox, a list of fields with no sentences. Semantic search ranks prose about revenue in other years higher. Hybrid search (dense + BM25 keyword) is the planned fix.
+
+Answer-level metrics (`--answers`) depend on LLM quota; run them with `--delay 5` on free tiers.
 
 ---
 
@@ -237,4 +245,5 @@ The suite covers the API (uploads, sessions, streaming, auth), the agent graph e
 - **Multi-user:** accounts and per-user documents; today it is single-tenant with an optional shared API key.
 - **Background jobs:** move research into a task queue so long requests survive restarts.
 - **Tracing:** LangSmith can be enabled with its environment variables (`LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`).
+- **Hybrid retrieval** (dense + BM25) for tables and infoboxes, where exact numbers and keywords matter.
 - `langchain-community` (PDF loader, cache) is being sunset upstream; migrate to standalone packages.
