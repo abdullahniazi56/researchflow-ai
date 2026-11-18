@@ -5,6 +5,7 @@ Usage (from the project root, with Qdrant and Postgres running):
     python -m eval.run_eval --ingest      # index data/*.pdf if missing (once)
     python -m eval.run_eval               # retrieval metrics only (no LLM)
     python -m eval.run_eval --answers     # + answer accuracy & citations (1 LLM call per question)
+    python -m eval.run_eval --answers --delay 5   # wait between questions (free-tier rate limits)
 
 Writes eval/results/report.md and eval/results/results.json.
 """
@@ -63,7 +64,25 @@ def ingest_missing(cases: list[dict]) -> None:
         print(f"  {filename}: {result['chunks']} chunks indexed")
 
 
-def evaluate(cases: list[dict], with_answers: bool, k: int) -> dict:
+def is_rate_limit(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "429" in text or "rate limit" in text or "resource_exhausted" in text
+
+
+def answer_with_retry(generate, question, evidence, attempts: int = 3, wait: float = 20):
+    """Free-tier APIs allow only a few requests per minute: on a 429,
+    wait and try again instead of crashing the whole evaluation."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return generate(question, evidence)
+        except Exception as exc:
+            if not is_rate_limit(exc) or attempt == attempts:
+                raise
+            print(f"    rate limited, waiting {wait:.0f}s (attempt {attempt}/{attempts})")
+            time.sleep(wait)
+
+
+def evaluate(cases: list[dict], with_answers: bool, k: int, delay: float = 0) -> dict:
     from backend.rag.pipeline import (
         generate_answer,
         retrieve_evidence,
@@ -88,7 +107,14 @@ def evaluate(cases: list[dict], with_answers: bool, k: int) -> dict:
 
         if with_answers:
             evidence = select_evidence([{"question": case["question"], "evidence": retrieved}])
-            raw = generate_answer(case["question"], evidence)
+            try:
+                raw = answer_with_retry(generate_answer, case["question"], evidence)
+            except Exception as exc:
+                # One failed question should not stop the whole run.
+                print(f"  {case['id']:<8} answer failed: {type(exc).__name__}: {str(exc)[:120]}")
+                row["error"] = str(exc)[:300]
+                per_question.append(row)
+                continue
             cleaned, report = verify_citations(raw, evidence)
             seconds = time.perf_counter() - started
 
@@ -105,6 +131,9 @@ def evaluate(cases: list[dict], with_answers: bool, k: int) -> dict:
         per_question.append(row)
         status = f"rank={rank}" + (f" correct={row['correct']}" if with_answers else "")
         print(f"  {case['id']:<8} {status}")
+
+        if with_answers and delay:
+            time.sleep(delay)
 
     summary = {"retrieval": summarize_retrieval(ranks)}
     if with_answers:
@@ -163,6 +192,7 @@ def main():
     parser.add_argument("--ingest", action="store_true", help="index the dataset PDFs if missing")
     parser.add_argument("--answers", action="store_true", help="also generate and score answers (uses the LLM)")
     parser.add_argument("-k", type=int, default=3, help="chunks to retrieve per question")
+    parser.add_argument("--delay", type=float, default=0, help="seconds to wait between LLM questions")
     args = parser.parse_args()
 
     cases = load_cases()
@@ -172,7 +202,7 @@ def main():
         ingest_missing(cases)
 
     print(f"Evaluating {len(cases)} questions…")
-    results = evaluate(cases, args.answers, args.k)
+    results = evaluate(cases, args.answers, args.k, args.delay)
     path = write_report(results, args.k)
 
     print(json.dumps(results["summary"], indent=2))

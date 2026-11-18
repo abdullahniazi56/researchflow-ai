@@ -1,5 +1,5 @@
-{"id": "nike-01", "question": "When was Nike founded and who founded it?", "source": "nike.pdf", "pages": [2, 4], "answer_keywords": ["1964", "Bowerman", "Knight"]}
-{"id": "nike-02", "question": "What was Nike's original company name?", "source": "nike.pdf", "pages": [1, 4], "answer_keywords": ["Blue Ribbon Sports"]}
+{"id": "nike-01", "question": "When was Nike founded and who founded it?", "source": "nike.pdf", "pages": [2, 3, 4], "answer_keywords": ["1964", "Bowerman", "Knight"]}
+{"id": "nike-02", "question": "What was Nike's original company name?", "source": "nike.pdf", "pages": [1, 3, 4], "answer_keywords": ["Blue Ribbon Sports"]}
 {"id": "nike-03", "question": "Who is Nike's president and CEO?", "source": "nike.pdf", "pages": [2, 6], "answer_keywords": ["Elliott Hill"]}
 {"id": "nike-04", "question": "What was Nike's revenue in 2025?", "source": "nike.pdf", "pages": [2], "answer_keywords": ["46.3"]}
 {"id": "nike-05", "question": "In which year was the Nike Air Max line first released?", "source": "nike.pdf", "pages": [11], "answer_keywords": ["1987"]}

@@ -104,3 +104,28 @@ def test_history_is_formatted_for_prompts():
 
 def test_no_evidence_gives_an_honest_answer_without_llm():
     assert "couldn't find any evidence" in pipeline.generate_answer("Q?", [])
+
+
+def test_duplicate_chunks_are_returned_once(monkeypatch):
+    from langchain_core.documents import Document
+
+    def doc(text, page):
+        return Document(page_content=text, metadata={"filename": "nike.pdf", "page": page})
+
+    class FakeStore:
+        def similarity_search_with_score(self, question, k, filter=None):
+            return [
+                (doc("Nike revenue grew in fiscal 2018.", 7), 0.9),
+                (doc("Nike  revenue grew in fiscal 2018.", 7), 0.9),  # same text again
+                (doc("Nike revenue was 46.3 billion in 2025.", 1), 0.8),
+                (doc("Puma is a German company.", 0), 0.5),
+            ]
+
+    monkeypatch.setattr(pipeline, "vector_store", FakeStore())
+
+    results = pipeline.retrieve_evidence("What was Nike revenue in 2025?", k=3)
+
+    texts = [r["content"] for r in results]
+    assert len(texts) == 3
+    assert len({t.lower().replace("  ", " ") for t in texts}) == 3
+    assert any("46.3" in t for t in texts)

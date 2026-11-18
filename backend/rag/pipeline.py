@@ -29,7 +29,7 @@ reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 # How many candidates to fetch from Qdrant before reranking.
-RETRIEVAL_CANDIDATES = int(os.getenv("RETRIEVAL_CANDIDATES", "10"))
+RETRIEVAL_CANDIDATES = int(os.getenv("RETRIEVAL_CANDIDATES", "20"))
 
 # Cross-encoder score above which a cited claim counts as "supported".
 CITATION_SUPPORT_THRESHOLD = float(
@@ -150,11 +150,20 @@ def retrieve_evidence(
     if not documents:
         return []
 
-    pairs = [[question, doc.page_content] for doc, _score in documents]
+    # The same text can be stored more than once (e.g. a PDF indexed
+    # twice). Keep one copy, so the top-k results are all different.
+    unique, seen_text = [], set()
+    for doc, score in documents:
+        text_key = re.sub(r"\s+", " ", doc.page_content).strip().lower()
+        if text_key not in seen_text:
+            seen_text.add(text_key)
+            unique.append((doc, score))
+
+    pairs = [[question, doc.page_content] for doc, _score in unique]
     rerank_scores = reranker.predict(pairs)
 
     ranked = sorted(
-        zip(documents, rerank_scores),
+        zip(unique, rerank_scores),
         key=lambda item: item[1],
         reverse=True,
     )[:k]
