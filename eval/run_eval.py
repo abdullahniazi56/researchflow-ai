@@ -39,7 +39,6 @@ def load_cases() -> list[dict]:
 
 
 def ingest_missing(cases: list[dict]) -> None:
-    """Index the PDFs the dataset needs, if they are not uploaded yet."""
     from backend.db import create_document, document_exists, init_db
     from backend.rag.ingestion import ingest_pdf
 
@@ -70,8 +69,7 @@ def is_rate_limit(exc: Exception) -> bool:
 
 
 def answer_with_retry(generate, question, evidence, attempts: int = 3, wait: float = 20):
-    """Free-tier APIs allow only a few requests per minute: on a 429,
-    wait and try again instead of crashing the whole evaluation."""
+    # free tiers rate-limit hard, wait and retry on 429
     for attempt in range(1, attempts + 1):
         try:
             return generate(question, evidence)
@@ -110,7 +108,6 @@ def evaluate(cases: list[dict], with_answers: bool, k: int, delay: float = 0) ->
             try:
                 raw = answer_with_retry(generate_answer, case["question"], evidence)
             except Exception as exc:
-                # One failed question should not stop the whole run.
                 print(f"  {case['id']:<8} answer failed: {type(exc).__name__}: {str(exc)[:120]}")
                 row["error"] = str(exc)[:300]
                 per_question.append(row)

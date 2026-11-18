@@ -1,9 +1,4 @@
-"""Run the research agent and save results.
-
-run_research()    -> returns the final result (used by POST /research)
-stream_research() -> yields progress events, then the result
-                     (used by POST /research/stream)
-"""
+"""Runs the agent for the API and saves answers."""
 
 import logging
 import time
@@ -21,7 +16,6 @@ HISTORY_MESSAGES = 6
 
 
 def load_history(session_id: str) -> list[dict]:
-    """The last few messages of a session, oldest first."""
     rows = get_session_message(session_id)
     return [
         {"role": role, "content": content}
@@ -31,12 +25,20 @@ def load_history(session_id: str) -> list[dict]:
 
 def failure_message(exc: Exception) -> str:
     text = str(exc)
-    if any(m in text for m in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit")):
+    if any(m in text for m in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit", "Rate limit")):
         return (
-            "The AI model's quota is used up for now. "
+            "The AI model's usage limit is reached for now. "
             "Try again later, or set LLM_PROVIDER=mistral in .env."
         )
-    return f"Research failed: {type(exc).__name__}: {exc}"
+    if any(m in text for m in ("503", "UNAVAILABLE", "overloaded", "high demand")):
+        return (
+            "The AI model is busy right now (the provider is overloaded). "
+            "Please try again in a minute."
+        )
+    if "timed out" in text.lower() or "timeout" in text.lower():
+        return "The AI model took too long to respond. Please try again."
+    logger.error("Unexpected research error: %s", text)
+    return "Research failed because of an unexpected error. Check the server log for details."
 
 
 def build_result(session_id: str, state: dict, seconds: float) -> dict:
@@ -82,7 +84,7 @@ async def run_research(
 
 
 def describe_update(node: str, update: dict) -> dict | None:
-    """Turn a graph node update into a progress event for the UI."""
+    """Map a node update to a progress event for the UI."""
     if not isinstance(update, dict):
         return None
 
@@ -126,7 +128,6 @@ async def stream_research(
     history: list[dict] | None = None,
     document_ids: list[str] | None = None,
 ):
-    """Yield {"type": "step", ...} events, then one {"type": "result", ...}."""
     started = time.perf_counter()
     final_state: dict = {}
 
@@ -144,7 +145,9 @@ async def stream_research(
             for node, update in chunk.items():
                 event = describe_update(node, update)
                 if event:
-                    yield {"type": "step", **event}
+                    at = round(time.perf_counter() - started, 1)
+                    logger.info("[%s] %5.1fs %s: %s", session_id, at, node, event["message"])
+                    yield {"type": "step", "at": at, **event}
 
     except Exception as exc:
         logger.exception("Research failed")
@@ -163,7 +166,6 @@ async def stream_research(
 
 
 def save_research_answer(session_id: str, result: dict) -> None:
-    """Save the generated answer and its sources (one row per source)."""
     answer = result.get("answer")
     if not answer:
         return
@@ -171,7 +173,10 @@ def save_research_answer(session_id: str, result: dict) -> None:
     message_id = create_message(session_id, "assistant", answer)
     saved = set()
 
-    for item in result.get("selected_evidence", []):
+    evidence = result.get("selected_evidence", [])
+    cited = [item for item in evidence if item.get("cited")]
+
+    for item in cited or evidence:
         key = (
             item.get("type", "unknown"),
             item.get("source", "Unknown source"),

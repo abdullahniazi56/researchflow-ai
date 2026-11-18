@@ -1,4 +1,3 @@
-// GLSL shaders for the 3D research core.
 // Simplex noise: "webgl-noise" by Ian McEwan & Ashima Arts (MIT License).
 
 const SIMPLEX_NOISE = /* glsl */ `
@@ -66,8 +65,6 @@ float snoise(vec3 v) {
 }
 `;
 
-// ---------- Core: a liquid sphere with a glowing rim ----------
-
 export const coreVertexShader = /* glsl */ `
 uniform float uTime;
 uniform float uAmp;
@@ -80,7 +77,6 @@ varying float vNoise;
 ${SIMPLEX_NOISE}
 
 void main() {
-  // Two layers of noise move the surface in and out like a liquid.
   float n1 = snoise(position * 1.35 + vec3(uTime * 0.16));
   float n2 = snoise(position * 3.1 - vec3(uTime * 0.27)) * 0.35;
   float n = n1 + n2;
@@ -106,7 +102,7 @@ varying vec3 vViewDir;
 varying float vNoise;
 
 void main() {
-  // Fresnel: surfaces seen edge-on glow brighter (the rim light).
+  // fresnel rim
   float facing = max(dot(normalize(vNormal), normalize(vViewDir)), 0.0);
   float fresnel = pow(1.0 - facing, 2.4);
 
@@ -120,8 +116,6 @@ void main() {
   gl_FragColor = vec4(color, 1.0);
 }
 `;
-
-// ---------- Particles: the "data galaxy" ----------
 
 export const particleVertexShader = /* glsl */ `
 uniform float uTime;
@@ -157,8 +151,6 @@ void main() {
   gl_FragColor = vec4(vColor * alpha * 1.3, alpha * vTwinkle);
 }
 `;
-
-// ---------- Halo behind the core ----------
 
 export const haloVertexShader = /* glsl */ `
 varying vec2 vUv;

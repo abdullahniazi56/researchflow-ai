@@ -1,5 +1,4 @@
-"""Research building blocks: planning, retrieval, web search,
-evidence selection, answer writing and citation checking."""
+"""Retrieval, web search, answer generation and citation checks."""
 
 import logging
 import os
@@ -13,32 +12,28 @@ from tavily import TavilyClient
 
 from backend.llm import llm, structured_with_fallback
 from backend.rag.vectorstore import vector_store
-from prompts.research import answer_prompt, research_prompt
+from backend.prompts import answer_prompt, research_prompt
 
 load_dotenv()
 
 logger = logging.getLogger("researchflow.pipeline")
 
 
-# --------------------------------------------------
-# INITIALIZATION
-# --------------------------------------------------
-
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
-# How many candidates to fetch from Qdrant before reranking.
+# candidates pulled from qdrant before reranking
 RETRIEVAL_CANDIDATES = int(os.getenv("RETRIEVAL_CANDIDATES", "20"))
 
-# Cross-encoder score above which a cited claim counts as "supported".
+# min reranker score for a cited claim to count as supported
 CITATION_SUPPORT_THRESHOLD = float(
     os.getenv("CITATION_SUPPORT_THRESHOLD", "0")
 )
 
 
 def message_text(message) -> str:
-    """Get plain text from a chat model reply (str or content blocks)."""
+    """Reply text, whether content is a str or a list of blocks."""
     content = getattr(message, "content", message)
 
     if isinstance(content, str):
@@ -55,7 +50,6 @@ def message_text(message) -> str:
 
 
 def format_history(history: list[dict] | None, max_chars: int = 600) -> str:
-    """Turn recent messages into a short text block for prompts."""
     if not history:
         return "(none)"
 
@@ -68,16 +62,11 @@ def format_history(history: list[dict] | None, max_chars: int = 600) -> str:
     return "\n".join(lines)
 
 
-# --------------------------------------------------
-# RESEARCH PLANNING (structured output)
-# --------------------------------------------------
-
 class ResearchPlan(BaseModel):
     standalone_question: str = Field(
         description="The user's latest message rewritten to be self-contained."
     )
-    # Length limits are enforced in code: some providers reject
-    # minItems/maxItems in tool schemas.
+    # no min/max items here, some providers reject them in tool schemas
     sub_questions: list[str] = Field(
         description="One or two focused search questions."
     )
@@ -95,7 +84,6 @@ def create_research_plan(
     )
     plan = planner.invoke(prompt)
 
-    # Clean up and de-duplicate, keep at most two sub-questions.
     sub_questions = list(
         dict.fromkeys(q.strip() for q in plan.sub_questions if q.strip())
     )[:2]
@@ -106,12 +94,7 @@ def create_research_plan(
     )
 
 
-# --------------------------------------------------
-# DOCUMENT RETRIEVAL + RERANKING
-# --------------------------------------------------
-
 def document_filter(document_ids: list[str] | None):
-    """Qdrant filter that keeps only chunks of the chosen PDFs."""
     if not document_ids:
         return None
 
@@ -126,7 +109,7 @@ def document_filter(document_ids: list[str] | None):
 
 
 def page_number(raw_page):
-    """PyPDF pages are zero-based; show one-based page numbers."""
+    """pypdf pages are 0-based"""
     if raw_page is None:
         return None
     try:
@@ -140,7 +123,6 @@ def retrieve_evidence(
     k: int = 3,
     document_ids: list[str] | None = None,
 ) -> list[dict]:
-    """Vector search in Qdrant, then rerank with a cross-encoder."""
     documents = vector_store.similarity_search_with_score(
         question,
         k=RETRIEVAL_CANDIDATES,
@@ -150,8 +132,7 @@ def retrieve_evidence(
     if not documents:
         return []
 
-    # The same text can be stored more than once (e.g. a PDF indexed
-    # twice). Keep one copy, so the top-k results are all different.
+    # the same chunk can exist twice (re-indexed PDFs), keep one copy
     unique, seen_text = [], set()
     for doc, score in documents:
         text_key = re.sub(r"\s+", " ", doc.page_content).strip().lower()
@@ -194,10 +175,6 @@ def retrieve_evidence(
     return evidence
 
 
-# --------------------------------------------------
-# WEB SEARCH
-# --------------------------------------------------
-
 def web_search(question: str) -> list[dict]:
     response = tavily.search(query=question, max_results=5)
 
@@ -223,12 +200,8 @@ def web_search(question: str) -> list[dict]:
     return evidence
 
 
-# --------------------------------------------------
-# EVIDENCE SELECTION + CONTEXT
-# --------------------------------------------------
-
 def select_evidence(results: list) -> list[dict]:
-    """Merge worker results, drop duplicates, give each item an ID."""
+    """Merge worker results, drop duplicates and number them E1..En."""
     selected = []
     seen = set()
 
@@ -280,16 +253,11 @@ def build_context(selected_evidence: list) -> str:
     return "\n---\n".join(parts)
 
 
-# --------------------------------------------------
-# ANSWER GENERATION
-# --------------------------------------------------
-
 def generate_answer(
     question: str,
     selected_evidence: list,
     history: list[dict] | None = None,
 ) -> str:
-    """Write the answer with [E#] citations (one LLM call)."""
     if not selected_evidence:
         return (
             "I couldn't find any evidence for this question in your "
@@ -304,29 +272,28 @@ def generate_answer(
         }
     )
 
-    # One call only. If the main model fails, llm.with_fallbacks()
-    # in backend/llm.py retries once on the backup model.
+    # provider fallback is handled in llm.py
     return message_text(llm.invoke(prompt))
 
 
-# --------------------------------------------------
-# CITATION VERIFICATION (no LLM: uses the reranker)
-# --------------------------------------------------
-
 CITATION_PATTERN = re.compile(r"\[(E\d+)\]")
+GROUPED_CITATION = re.compile(r"\[\s*(E\d+(?:\s*[,;]\s*E\d+)+)\s*\]")
+
+
+def split_grouped_citations(answer: str) -> str:
+    """[E1, E2] -> [E1][E2]"""
+    return GROUPED_CITATION.sub(
+        lambda m: "".join(f"[{eid.strip()}]" for eid in re.split(r"[,;]", m.group(1))),
+        answer,
+    )
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 def verify_citations(answer: str, selected_evidence: list) -> tuple[str, dict]:
-    """Check every cited claim against the evidence it cites.
+    """Drop citations to unknown IDs and score each cited sentence
+    against its evidence with the reranker. Returns (answer, report)."""
+    answer = split_grouped_citations(answer)
 
-    * Citations to evidence IDs that don't exist are removed.
-    * Each cited sentence is scored against its evidence with the
-      cross-encoder. A low score means the evidence probably does not
-      support the claim.
-
-    Returns the cleaned answer and a small report for the UI.
-    """
     evidence_map = {
         item["evidence_id"]: item
         for item in selected_evidence
@@ -367,7 +334,12 @@ def verify_citations(answer: str, selected_evidence: list) -> tuple[str, dict]:
             if score >= CITATION_SUPPORT_THRESHOLD:
                 supported[claim_index] = True
 
+    cited_ids = list(dict.fromkeys(
+        eid for eid in CITATION_PATTERN.findall(cleaned) if eid in evidence_map
+    ))
+
     report = {
+        "cited_ids": cited_ids,
         "cited_claims": len(claims),
         "supported_claims": sum(supported),
         "weak_claims": [c for c, ok in zip(claims, supported) if not ok][:5],
@@ -376,10 +348,6 @@ def verify_citations(answer: str, selected_evidence: list) -> tuple[str, dict]:
 
     return cleaned, report
 
-
-# --------------------------------------------------
-# CITATION RESOLUTION ([E1] -> readable source)
-# --------------------------------------------------
 
 def resolve_citations(answer: str, selected_evidence: list) -> str:
     evidence_map = {
@@ -395,7 +363,7 @@ def resolve_citations(answer: str, selected_evidence: list) -> str:
             return match.group(0)
 
         source = str(item.get("source") or "Unknown source")
-        # Escape square brackets so Markdown links don't break.
+        # brackets in titles break markdown links
         source = source.replace("[", r"\[").replace("]", r"\]")
         url = item.get("url")
         page = item.get("page")

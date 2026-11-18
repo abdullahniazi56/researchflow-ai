@@ -1,25 +1,16 @@
-"""Rule-based decisions that used to cost an LLM call.
+"""Cheap rules for when to call the planner and when to hit the web.
 
-Before, the agent asked the LLM "which tool should I use?" for every
-sub-question and always ran the planner. Both decisions can be made
-with cheap rules, which saves most of the LLM quota:
-
-* needs_planning: only split long or multi-part questions.
-* needs_web_search: always search the uploaded PDFs first (free and
-  local); go to the web only when the PDFs don't answer the question
-  well enough, or the question is clearly about recent events.
-
-All thresholds can be changed in .env without touching code.
+PDFs are always searched first; the web is only used when the best
+reranker score is low or the question is about recent events.
 """
 
 import os
 import re
 
-# Cross-encoder (ms-marco) scores are roughly -11..+11; above 0 means
-# "probably relevant". Raise it to use the web more often.
+# ms-marco scores run roughly -11..11, above 0 is usually relevant
 DOC_RELEVANCE_THRESHOLD = float(os.getenv("DOC_RELEVANCE_THRESHOLD", "0"))
 
-# "auto" (default), "always" or "never"
+# auto | always | never
 PLANNER_MODE = os.getenv("PLANNER_MODE", "auto").strip().lower()
 
 PLANNING_MIN_WORDS = int(os.getenv("PLANNING_MIN_WORDS", "14"))
@@ -39,7 +30,6 @@ RECENCY_PATTERN = re.compile(
 
 
 def needs_planning(question: str) -> bool:
-    """Should the planner LLM split this question into sub-questions?"""
     if PLANNER_MODE == "always":
         return True
     if PLANNER_MODE == "never":
@@ -69,12 +59,9 @@ def needs_web_search(
     document_evidence: list[dict],
     research_round: int = 0,
 ) -> bool:
-    """Decide whether to also search the web for this sub-question."""
-    # Second round means the first round found nothing useful.
     if research_round > 0:
         return True
 
-    # Questions about recent events need fresh information.
     if RECENCY_PATTERN.search(question):
         return True
 
@@ -83,7 +70,7 @@ def needs_web_search(
 
     best = best_document_score(document_evidence)
 
-    # No score available: trust the documents we found.
+    # no score to judge by
     if best is None:
         return False
 

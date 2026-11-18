@@ -1,6 +1,4 @@
--- ResearchFlow AI database schema.
--- Safe to run many times: every table uses IF NOT EXISTS,
--- so existing tables and data are never changed.
+-- Runs on every startup, so everything is IF NOT EXISTS.
 
 CREATE TABLE IF NOT EXISTS research_sessions (
     session_id  TEXT PRIMARY KEY,
@@ -27,8 +25,6 @@ CREATE TABLE IF NOT EXISTS research_sources (
     page_number  INTEGER
 );
 
--- One row per uploaded PDF. file_hash stops the same file
--- from being ingested twice (which would duplicate chunks in Qdrant).
 CREATE TABLE IF NOT EXISTS documents (
     document_id  TEXT PRIMARY KEY,
     filename     TEXT NOT NULL,
@@ -38,7 +34,6 @@ CREATE TABLE IF NOT EXISTS documents (
     uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Indexes for the queries the API runs most often.
 CREATE INDEX IF NOT EXISTS idx_sessions_created_at
     ON research_sessions (created_at DESC);
 

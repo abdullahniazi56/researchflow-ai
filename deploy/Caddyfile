@@ -1,0 +1,16 @@
+# /api/* -> backend (prefix stripped), everything else -> frontend
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy backend:8000 {
+			# don't buffer the SSE stream
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
+}

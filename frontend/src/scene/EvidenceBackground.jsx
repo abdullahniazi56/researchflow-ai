@@ -1,11 +1,6 @@
 import { useEffect, useRef } from "react";
 
-/*
-  A slowly rotating 3D "evidence graph" drawn on a canvas.
-  Nodes are sources, lines are the links between them, and small
-  pulses travel along the links like evidence flowing to an answer.
-  No libraries: plain 3D maths + perspective projection.
-*/
+// 2D canvas fallback for browsers without WebGL.
 
 const NODE_COUNT = 150;
 const LINKS_PER_NODE = 2;
@@ -13,8 +8,7 @@ const PULSE_COUNT = 7;
 const ACCENT = "94, 200, 190"; // teal, as "r, g, b"
 
 function createGraph() {
-  // Fibonacci sphere: spreads points evenly over a sphere,
-  // then a little random depth makes it feel organic.
+  // fibonacci sphere with some jitter
   const nodes = Array.from({ length: NODE_COUNT }, (_, i) => {
     const y = 1 - (i / (NODE_COUNT - 1)) * 2;
     const radius = Math.sqrt(1 - y * y);
@@ -29,7 +23,6 @@ function createGraph() {
     };
   });
 
-  // Connect every node to its nearest neighbours.
   const seen = new Set();
   const links = [];
 
@@ -88,13 +81,11 @@ export default function EvidenceBackground() {
     }
 
     function project(node, cosY, sinY, cosX, sinX) {
-      // Rotate around the Y axis, then tilt around the X axis.
       const x1 = node.x * cosY - node.z * sinY;
       const z1 = node.x * sinY + node.z * cosY;
       const y1 = node.y * cosX - z1 * sinX;
       const z2 = node.y * sinX + z1 * cosX;
 
-      // Perspective: things further away (bigger z) get smaller.
       const perspective = 2.8 / (2.8 + z2);
       const scale = Math.min(width, height) * 0.46;
       const isWide = width > 900;
@@ -118,7 +109,6 @@ export default function EvidenceBackground() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Links
       ctx.lineWidth = 1;
       for (const [i, j] of links) {
         const a = points[i];
@@ -131,7 +121,6 @@ export default function EvidenceBackground() {
         ctx.stroke();
       }
 
-      // Nodes
       points.forEach((p, i) => {
         const node = nodes[i];
         const radius = (node.bright ? 2.2 : 1.1) + p.depth * 1.4;
@@ -145,7 +134,6 @@ export default function EvidenceBackground() {
         ctx.fill();
       });
 
-      // Pulses travelling along links
       for (const pulse of pulses) {
         const a = points[pulse.link[0]];
         const b = points[pulse.link[1]];

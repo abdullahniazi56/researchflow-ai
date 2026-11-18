@@ -1,11 +1,7 @@
-# Runtime dependencies (versions pinned for reproducible builds).
-# For a smaller Docker image, PyTorch is installed CPU-only in the Dockerfile.
-
 # Config
 python-dotenv==1.2.3
 
 # LLMs / LangChain / LangGraph
-langchain==1.4.0
 langchain-core==1.6.3
 langchain-community==0.4.2
 langchain-google-genai==4.4.0
@@ -33,9 +29,7 @@ python-multipart==0.0.32
 pydantic==2.13.5
 httpx==0.28.1
 
-# Database (psycopg for Postgres, SQLAlchemy for the LLM response cache)
+# Database (sqlalchemy is used by the LLM cache)
 psycopg[binary]==3.3.6
 sqlalchemy==2.0.53
 
-# Utilities
-rich==15.0.0

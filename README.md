@@ -160,6 +160,10 @@ npm run dev
 
 Database tables are created automatically on startup (`backend/schema.sql`).
 
+### Option C: production (single server)
+
+`docker-compose.prod.yml` runs the full stack behind **Caddy** with automatic HTTPS, with only ports 80/443 public. Step-by-step guide for a free Oracle Cloud VM: **[DEPLOY.md](DEPLOY.md)**.
+
 ---
 
 ## Configuration
@@ -201,31 +205,32 @@ Interactive docs: `/docs`.
 
 ```
 backend/
-  main.py            FastAPI app: REST + SSE endpoints, uploads, auth, CORS
+  main.py              FastAPI app: REST + SSE endpoints, uploads, auth, CORS
+  prompts.py           planner and answer prompts
+  llm.py               model setup: fallback, cache, timeouts, structured output
+  db.py, schema.sql    PostgreSQL access and schema
   agent/
-    graph.py         LangGraph agent (planner, parallel workers, verify)
-    routing.py       rule-based planning and tool routing
-    service.py       runs the graph, streams progress, saves answers
+    graph.py           LangGraph agent (planner, parallel workers, verify)
+    routing.py         rule-based planning and tool routing
+    service.py         runs the graph, streams progress, saves answers
   rag/
-    pipeline.py      retrieval + reranking, web search, answer, citation check
-    ingestion.py     PDF → chunks → Qdrant
-    vectorstore.py   embedding model + Qdrant client
+    pipeline.py        retrieval + reranking, web search, answer, citation check
+    ingestion.py       PDF -> chunks -> Qdrant
+    vectorstore.py     embedding model + Qdrant client
   mcp/
-    server.py        MCP tools (document_search, web_search_tool)
-    client.py        persistent MCP client session
-  llm.py             model setup, fallback, cache, structured output
-  db.py, schema.sql  PostgreSQL access and schema
-prompts/research.py  planner and answer prompts
+    server.py          MCP tools (document_search, web_search_tool)
+    client.py          persistent MCP client session
 frontend/src/
-  App.jsx            state and data flow
-  components/        Sidebar, Composer, Message, ProgressSteps
-  Markdown.jsx       safe Markdown + citation rendering
-  SourceList.jsx     sources under each answer
-eval/                dataset, metrics, evaluation runner
-tests/               pytest suite (models, Qdrant, web and LLM replaced by fakes)
+  App.jsx              state and data flow
+  api.js               REST + streaming client
+  components/          Sidebar, Composer, Message, ProgressSteps, Markdown, SourceList, Icons
+  scene/               3D research core (Three.js shaders) and 2D fallback
+eval/                  dataset, metrics and evaluation runner
+scripts/               maintenance (clean_index.py)
+tests/                 pytest suite (models, Qdrant, web and LLM replaced by fakes)
+deploy/Caddyfile       HTTPS reverse proxy for production
+docker-compose*.yml    local stack and production stack
 ```
-
----
 
 ## Testing
 

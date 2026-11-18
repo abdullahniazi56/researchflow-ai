@@ -94,3 +94,31 @@ def test_document_filter_reaches_the_tool(monkeypatch):
     name, args = calls["tools"][0]
     assert name == "document_search"
     assert args["document_ids"] == ["doc-1"]
+
+
+def test_follow_up_keeps_subject_when_planner_fails(monkeypatch):
+    graph, calls = load_graph(monkeypatch)
+
+    def broken_planner(question, history=None):
+        raise RuntimeError("503 UNAVAILABLE")
+
+    monkeypatch.setattr(graph, "create_research_plan", broken_planner)
+    history = [
+        {"role": "user", "content": "When was Nike founded?"},
+        {"role": "assistant", "content": "In 1964."},
+    ]
+    run(graph, "Who is its current CEO?", history=history)
+
+    searched = [args["question"] for name, args in calls["tools"]]
+    assert all("Nike" in q for q in searched)
+
+
+def test_cited_sources_are_marked(monkeypatch):
+    graph, _ = load_graph(monkeypatch)
+    monkeypatch.setattr(
+        graph, "verify_citations",
+        lambda answer, ev: (answer, {"cited_ids": ["E1"], "cited_claims": 1, "supported_claims": 1}),
+    )
+    state = run(graph, "What is Nike?")
+
+    assert state["selected_evidence"][0]["cited"] is True

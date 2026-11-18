@@ -4,14 +4,12 @@ import os
 import sys
 import types
 
-# Light fakes for heavy dependencies, registered before importing pipeline.
 os.environ["LLM_CACHE"] = "off"
 os.environ.setdefault("GOOGLE_API_KEY", "test-key")
 os.environ.setdefault("MISTRAL_API_KEY", "test-key")
 
 
 class WordOverlapCrossEncoder:
-    """Scores a (claim, passage) pair by shared words: >0 means related."""
 
     def __init__(self, *args, **kwargs):
         pass
@@ -129,3 +127,17 @@ def test_duplicate_chunks_are_returned_once(monkeypatch):
     assert len(texts) == 3
     assert len({t.lower().replace("  ", " ") for t in texts}) == 3
     assert any("46.3" in t for t in texts)
+
+
+def test_grouped_citations_are_split_and_reported():
+    answer = "Nike was founded in 1964 by Bowerman and Knight [E1, E2]."
+    cleaned, report = pipeline.verify_citations(answer, EVIDENCE)
+
+    assert "[E1][E2]" in cleaned
+    assert report["cited_ids"] == ["E1", "E2"]
+
+
+def test_only_valid_ids_are_reported_as_cited():
+    _, report = pipeline.verify_citations("Founded in 1964 by Knight [E2; E9].", EVIDENCE)
+    assert report["cited_ids"] == ["E2"]
+    assert report["removed_invalid_citations"] == ["E9"]

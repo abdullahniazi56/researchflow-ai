@@ -1,8 +1,6 @@
 import { useRef } from "react";
 import { ArrowUpIcon, FileIcon, PaperclipIcon, StopIcon } from "./Icons";
 
-/* The question box: glass panel with an animated edge while focused or busy. */
-
 export default function Composer({
   value,
   onChange,
@@ -18,7 +16,6 @@ export default function Composer({
   const fileInputRef = useRef(null);
 
   function handleKeyDown(event) {
-    // Enter sends, Shift+Enter adds a new line.
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (value.trim() && !loading) onSubmit();
@@ -52,7 +49,7 @@ export default function Composer({
           accept="application/pdf"
           onChange={(event) => {
             const file = event.target.files?.[0];
-            event.target.value = ""; // allow choosing the same file again
+            event.target.value = ""; // so the same file can be picked again
             if (file) onAttach(file);
           }}
           hidden

@@ -1,4 +1,4 @@
-"""ResearchFlow AI — FastAPI backend."""
+"""ResearchFlow API."""
 
 import asyncio
 import hashlib
@@ -50,10 +50,6 @@ logging.basicConfig(
 logger = logging.getLogger("researchflow")
 
 
-# --------------------------------------------------
-# SETTINGS
-# --------------------------------------------------
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,8 +64,7 @@ CORS_ORIGINS = [
     if origin.strip()
 ]
 
-# Optional: when API_KEY is set, every request (except health and docs)
-# must send the header  X-API-Key: <API_KEY>
+# If set, requests need an X-API-Key header (health and docs stay public).
 API_KEY = os.getenv("API_KEY") or None
 PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
 
@@ -84,20 +79,14 @@ async def require_api_key(
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
 
-# --------------------------------------------------
-# APP
-# --------------------------------------------------
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create any missing database tables.
     try:
         init_db()
     except Exception as exc:
         logger.error("Database is not available: %s", exc)
 
-    # Warm up the MCP tool server in the background, so the API is
-    # usable right away and the models load before the first question.
+    # load the MCP server (and its models) in the background
     async def warm_up_tools():
         try:
             await mcp_client.start()
@@ -133,10 +122,6 @@ app.add_middleware(
 )
 
 
-# --------------------------------------------------
-# SCHEMAS
-# --------------------------------------------------
-
 class UpdateSessionTitle(BaseModel):
     title: str = Field(min_length=1, max_length=100)
 
@@ -164,10 +149,6 @@ class ResearchResponse(BaseModel):
     verification: dict | None = None
     seconds: float | None = None
 
-
-# --------------------------------------------------
-# HEALTH + SESSIONS
-# --------------------------------------------------
 
 @app.get("/")
 def home():
@@ -216,16 +197,9 @@ def rename_session(session_id: str, body: UpdateSessionTitle):
     return {"message": "Research session title updated", "session_id": session_id, "title": new_title}
 
 
-# --------------------------------------------------
-# RESEARCH
-# --------------------------------------------------
-
 def open_session(body: ResearchRequest) -> tuple[str, str, list[dict]]:
-    """Create a new session or continue an existing one.
-
-    Returns (session_id, question, history). The history is loaded
-    before the new question is saved, so it holds earlier turns only.
-    """
+    """Returns (session_id, question, history). History is read before
+    the new question is stored, so it only holds earlier turns."""
     question = body.question.strip()
     if not question:
         raise HTTPException(status_code=422, detail="Research question cannot be empty")
@@ -260,7 +234,6 @@ def result_message(result: dict) -> str:
 
 @app.post("/research", response_model=ResearchResponse)
 async def create_research_request(body: ResearchRequest):
-    """Run the whole research and return the result in one response."""
     session_id, question, history = open_session(body)
 
     result = await run_research(question, session_id, history, body.document_ids)
@@ -273,12 +246,8 @@ async def create_research_request(body: ResearchRequest):
 
 @app.post("/research/stream")
 async def stream_research_request(body: ResearchRequest):
-    """Run research and stream progress as Server-Sent Events.
-
-    Each event is a line "data: {json}". Step events look like
-    {"type": "step", "step": "search", "message": "..."}; the last event
-    is {"type": "result", ...} with the same fields as POST /research.
-    """
+    """Like /research, but streams progress as server-sent events.
+    The last event is {"type": "result", ...}."""
     session_id, question, history = open_session(body)
 
     async def events():
@@ -305,31 +274,24 @@ def sse(data: dict) -> str:
     return f"data: {json.dumps(data, default=str)}\n\n"
 
 
-# --------------------------------------------------
-# DOCUMENTS
-# --------------------------------------------------
-
-# A plain "def" (not "async def"): PDF parsing and embedding are
-# CPU-heavy, and FastAPI runs sync endpoints in a worker thread,
-# so the server stays responsive while a file is processed.
+# sync on purpose: parsing + embedding is CPU-bound, so let FastAPI
+# run it in its threadpool instead of blocking the event loop
 @app.post("/documents/upload")
 def upload_document(file: UploadFile = File(...)):
     filename = file.filename or "document.pdf"
 
-    # 1. Extension check
     if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
 
-    # 2. Size check (read one byte past the limit to detect big files)
+    # read one byte past the limit so oversized files are detectable
     contents = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(contents) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File is too large (max 20 MB).")
 
-    # 3. Real PDF? Every PDF file starts with "%PDF-"
+    # magic bytes, the extension alone proves nothing
     if not contents.startswith(b"%PDF-"):
         raise HTTPException(status_code=400, detail="This file is not a valid PDF.")
 
-    # 4. Duplicate check (same content = same hash, whatever the name)
     file_hash = hashlib.sha256(contents).hexdigest()
     try:
         already_uploaded = document_exists(file_hash)
@@ -339,13 +301,11 @@ def upload_document(file: UploadFile = File(...)):
     if already_uploaded:
         raise HTTPException(status_code=409, detail="This document has already been uploaded.")
 
-    # 5. Save with our own name. Never use the user's filename in a
-    #    path: a name like "../../backend/main.py" could overwrite files.
+    # never use the client filename in a path (path traversal)
     document_id = uuid.uuid4().hex
     save_path = UPLOAD_DIR / f"{document_id}.pdf"
     save_path.write_bytes(contents)
 
-    # 6. Ingest into Qdrant
     try:
         result = ingest_pdf(save_path, filename, document_id)
     except Exception as exc:
@@ -367,7 +327,6 @@ def upload_document(file: UploadFile = File(...)):
             detail="No readable text found. The PDF may be a scanned image.",
         )
 
-    # 7. Remember the document
     try:
         create_document(document_id, filename, file_hash, result["pages"], result["chunks"])
     except Exception as exc:
@@ -391,7 +350,7 @@ def get_documents():
 
 @app.delete("/documents/{document_id}")
 def remove_document(document_id: str):
-    """Delete a PDF: its chunks in Qdrant, its DB row and the file."""
+    """Removes the chunks, the DB row and the stored file."""
     filename = delete_document(document_id)
     if filename is None:
         raise HTTPException(status_code=404, detail="Document not found")

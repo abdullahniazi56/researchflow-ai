@@ -1,5 +1,5 @@
-import Markdown from "../Markdown";
-import SourceList from "../SourceList";
+import Markdown from "./Markdown";
+import SourceList from "./SourceList";
 import { ShieldIcon } from "./Icons";
 
 function VerificationBadge({ verification }) {

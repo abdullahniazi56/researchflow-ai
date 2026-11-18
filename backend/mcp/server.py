@@ -1,8 +1,4 @@
-"""MCP server exposing ResearchFlow's research tools.
-
-Runs as a separate process (stdio transport). The API starts it once
-through backend/mcp/client.py and reuses it for every tool call.
-"""
+"""MCP server with the research tools (stdio, started by mcp/client.py)."""
 
 from mcp.server.fastmcp import FastMCP
 
@@ -16,11 +12,7 @@ def document_search(
     question: str,
     document_ids: list[str] | None = None,
 ) -> list[dict]:
-    """Search the user's uploaded PDFs for evidence.
-
-    document_ids: optional list of uploaded document IDs; when given,
-    only those PDFs are searched.
-    """
+    """Search the uploaded PDFs, optionally only the given document_ids."""
     return retrieve_evidence(question, k=3, document_ids=document_ids)
 
 

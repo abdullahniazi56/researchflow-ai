@@ -1,4 +1,4 @@
-"""Pure metric functions (no models), so they can be unit-tested."""
+"""Metrics used by run_eval."""
 
 import re
 import statistics
@@ -9,8 +9,6 @@ def _norm(text: str) -> str:
 
 
 def is_relevant(item: dict, case: dict) -> bool:
-    """A retrieved chunk is relevant if it comes from the expected file
-    and one of the expected pages."""
     return (
         _norm(item.get("source")) == _norm(case["source"])
         and item.get("page") in case["pages"]
@@ -18,7 +16,7 @@ def is_relevant(item: dict, case: dict) -> bool:
 
 
 def first_relevant_rank(retrieved: list[dict], case: dict) -> int | None:
-    """1-based rank of the first relevant chunk, or None."""
+    """1-based rank of the first relevant chunk, or None"""
     for rank, item in enumerate(retrieved, start=1):
         if is_relevant(item, case):
             return rank
@@ -26,7 +24,6 @@ def first_relevant_rank(retrieved: list[dict], case: dict) -> int | None:
 
 
 def answer_is_correct(answer: str, keywords: list[str]) -> bool:
-    """Every expected keyword must appear in the answer (case-insensitive)."""
     text = _norm(answer)
     return all(_norm(k) in text for k in keywords)
 

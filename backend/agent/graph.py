@@ -1,15 +1,9 @@
-"""LangGraph research agent.
+"""Research agent.
 
-    START -> planner -> (fan-out) research_worker x N -> fan_in -> decision
-          decision --(no evidence, retry once)--> planner
-          decision --> selection -> answer -> verify -> END
+planner -> research_worker (one per sub-question) -> fan_in -> decision
+  -> selection -> answer -> verify
 
-* planner          rewrites follow-ups and splits complex questions (LLM, only when needed)
-* research_worker  collects evidence for one sub-question, in parallel (MCP tools)
-* decision         retries once with web search if nothing useful was found
-* selection        merges and de-duplicates evidence, gives each piece an ID
-* answer           writes the grounded answer with [E#] citations (LLM)
-* verify           checks citations with the reranker and turns them into sources
+decision loops back to the planner once when nothing was found.
 """
 
 import logging
@@ -33,8 +27,7 @@ from backend.rag.pipeline import (
 
 logger = logging.getLogger("researchflow.agent")
 
-# "rules": cheap rule-based tool choice (default, saves LLM quota)
-# "llm":   the LLM picks tools through tool calling
+# "rules" (default) or "llm" (tool calling)
 ROUTING_MODE = os.getenv("ROUTING_MODE", "rules").strip().lower()
 
 MAX_RESEARCH_ROUNDS = 2
@@ -74,12 +67,8 @@ def initial_state(
     }
 
 
-# --------------------------------------------------
-# EVIDENCE NORMALIZATION
-# --------------------------------------------------
-
 def normalize_evidence(result, tool_name: str) -> list[dict]:
-    """Convert MCP tool output into a consistent evidence format."""
+    """Flatten MCP tool output into evidence dicts."""
     is_web = tool_name == "web_search_tool"
 
     if result is None:
@@ -122,19 +111,14 @@ def normalize_evidence(result, tool_name: str) -> list[dict]:
     return []
 
 
-# --------------------------------------------------
-# NODES
-# --------------------------------------------------
-
 def planner_node(state: ResearchState):
     question = state["question"]
     history = state.get("history") or []
 
-    # Retry round: search the (already rewritten) question directly.
+    # retry round: search the rewritten question as is
     if state["research_round"] > 0:
         return {"research_questions": [state.get("standalone_question") or question]}
 
-    # A first, simple question needs no planner call at all.
     if not history and not needs_planning(question):
         logger.info("Planner skipped (no LLM call).")
         return {"standalone_question": question, "research_questions": [question]}
@@ -142,8 +126,9 @@ def planner_node(state: ResearchState):
     try:
         plan = create_research_plan(question, history)
     except Exception as exc:
-        logger.warning("Planner failed, using the original question: %s", exc)
-        return {"standalone_question": question, "research_questions": [question]}
+        logger.warning("Planner failed, using a rule-based query: %s", exc)
+        query = fallback_query(question, history)
+        return {"standalone_question": query, "research_questions": [query]}
 
     return {
         "standalone_question": plan.standalone_question,
@@ -151,8 +136,17 @@ def planner_node(state: ResearchState):
     }
 
 
+def fallback_query(question: str, history: list[dict]) -> str:
+    """Used when the planner fails: keep the subject of a follow-up
+    ("who is its CEO?") by prefixing the previous question."""
+    previous = next(
+        (m["content"] for m in reversed(history or []) if m.get("role") == "user"),
+        "",
+    )
+    return f"{previous} {question}".strip() if previous else question
+
+
 async def run_tool(tool_name: str, arguments: dict, errors: list) -> list:
-    """Call one MCP tool and return its evidence in the standard format."""
     try:
         result = await mcp_client.call_tool(tool_name, arguments)
     except Exception as exc:
@@ -170,7 +164,6 @@ _tool_calling_llm = None
 
 
 def tool_calling_llm():
-    """LLM with the MCP tools bound (only built when ROUTING_MODE=llm)."""
     global _tool_calling_llm
     if _tool_calling_llm is None:
         from backend.llm import bind_tools_with_fallback
@@ -179,7 +172,7 @@ def tool_calling_llm():
 
 
 async def choose_tools_with_llm(question: str) -> list[tuple[str, str]]:
-    """Ask the LLM which tools to call. Returns (tool_name, query) pairs."""
+    """Returns (tool_name, query) pairs chosen by the LLM."""
     instruction = (
         f"Research the following question:\n\n{question}\n\n"
         "Choose the research tools needed to collect evidence. Use "
@@ -197,7 +190,6 @@ async def choose_tools_with_llm(question: str) -> list[tuple[str, str]]:
 
 
 async def research_worker(state: dict):
-    """Collect evidence for one sub-question."""
     question = state["question"]
     research_round = state["research_round"]
     document_ids = state.get("document_ids")
@@ -229,7 +221,7 @@ async def research_worker(state: dict):
                 "research_round": research_round,
             }]}
 
-    # Rules: PDFs first (local, free), web only when needed.
+    # pdfs first, web only when they look weak
     evidence = await run_tool("document_search", doc_args(question), errors)
 
     if needs_web_search(question, evidence, research_round):
@@ -272,7 +264,6 @@ def agent_decision(state: ResearchState):
 
     has_evidence = any(r.get("evidence") for r in current)
 
-    # Nothing useful found: one more round (with web search).
     if not has_evidence and state["research_round"] < MAX_RESEARCH_ROUNDS:
         return "research"
 
@@ -295,15 +286,14 @@ def answer_node(state: ResearchState):
 def verify_node(state: ResearchState):
     evidence = state["selected_evidence"]
     cleaned, report = verify_citations(state["raw_answer"], evidence)
+    cited = set(report.get("cited_ids", []))
+    for item in evidence:
+        item["cited"] = item.get("evidence_id") in cited
     return {
         "answer": resolve_citations(cleaned, evidence),
         "verification": report,
     }
 
-
-# --------------------------------------------------
-# GRAPH
-# --------------------------------------------------
 
 graph = StateGraph(ResearchState)
 

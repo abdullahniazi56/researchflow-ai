@@ -1,5 +1,3 @@
-/* Small line icons (24x24 grid, 1.8 stroke), sized with the `size` prop. */
-
 function Icon({ size = 16, children, ...props }) {
   return (
     <svg

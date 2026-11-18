@@ -1,9 +1,7 @@
 """Remove legacy chunks from Qdrant.
 
-Chunks indexed by the old ingestion script (before uploads existed) have
-no `document_id` and no row in the documents table. They can't be listed
-or deleted from the app, and they duplicate PDFs that were uploaded
-again later, which crowds the top search results.
+Chunks without a document_id come from the old ingestion script. They
+have no row in the documents table and duplicate re-uploaded PDFs.
 
 Usage (from the project root, with Qdrant running):
 

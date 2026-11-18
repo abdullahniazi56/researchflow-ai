@@ -37,8 +37,7 @@ def client(tmp_path, monkeypatch):
         lambda path, filename, document_id: {"pages": 2, "chunks": 5},
     )
 
-    # Not used as a context manager, so the startup hook (init_db)
-    # does not try to reach a real database.
+    # no context manager -> lifespan (init_db) doesn't run
     test_client = TestClient(main.app)
     test_client.saved_documents = saved_documents
     test_client.upload_dir = tmp_path
@@ -61,7 +60,6 @@ def test_upload_valid_pdf(client):
     assert body["pages"] == 2
     assert body["chunks"] == 5
 
-    # The file is saved under a generated name, not the user's name.
     saved = list(client.upload_dir.iterdir())
     assert len(saved) == 1
     assert saved[0].name == f"{body['document_id']}.pdf"

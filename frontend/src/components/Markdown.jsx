@@ -1,10 +1,5 @@
-/*
-  A small, safe Markdown renderer for research answers.
-  Supports: headings, paragraphs, bullet and numbered lists,
-  **bold**, *italic*, `code`, [links](https://...) and the
-  document citations the backend produces: [Source: file.pdf, Page: 3].
-  It builds React elements (no innerHTML), so model output can't inject HTML.
-*/
+// Small markdown renderer. Builds React elements (no innerHTML), so model
+// output can't inject HTML. Also turns [Source: file, Page: n] into chips.
 
 const OPEN = "⟦"; // placeholders for escaped \[ and \]
 const CLOSE = "⟧";

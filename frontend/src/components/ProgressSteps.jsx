@@ -1,7 +1,5 @@
 import { CheckIcon, PenIcon, SearchIcon, ShieldIcon, SparkIcon } from "./Icons";
 
-/* Live agent timeline, fed by the streaming endpoint. */
-
 const STEP_ICONS = {
   start: SparkIcon,
   plan: SparkIcon,

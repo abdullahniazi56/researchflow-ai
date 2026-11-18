@@ -1,10 +1,5 @@
-"""Chat model setup with automatic fallback.
-
-LLM_PROVIDER in .env picks the main model ("gemini" or "mistral").
-If the main model fails (for example the Gemini daily quota is used up),
-LangChain automatically retries the same call on the other provider,
-as long as its API key is set.
-"""
+"""Chat models. LLM_PROVIDER picks the main one; the other provider is
+used as a fallback when its API key is set."""
 
 import os
 from pathlib import Path
@@ -18,9 +13,9 @@ load_dotenv()
 
 PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
 
-# Cache LLM responses on disk: asking the exact same prompt again
-# (same question, same evidence) costs zero quota.
-# Set LLM_CACHE=off in .env to disable it.
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "45"))
+
+# identical prompts are served from disk (LLM_CACHE=off to disable)
 if os.getenv("LLM_CACHE", "on").strip().lower() != "off":
     from langchain_community.cache import SQLiteCache
 
@@ -32,9 +27,9 @@ def _gemini():
     return ChatGoogleGenerativeAI(
         model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
         api_key=os.getenv("GOOGLE_API_KEY"),
-        # A used-up daily quota won't come back by retrying,
-        # so fail fast and let the fallback model answer.
+        # retrying a used-up quota is pointless, let the fallback answer
         max_retries=1,
+        timeout=LLM_TIMEOUT,
     )
 
 
@@ -43,6 +38,7 @@ def _mistral():
         model=os.getenv("MISTRAL_MODEL", "mistral-small-latest"),
         api_key=os.getenv("MISTRAL_API_KEY"),
         max_retries=1,
+        timeout=LLM_TIMEOUT,
     )
 
 
@@ -75,11 +71,7 @@ llm = (
 
 
 def structured_with_fallback(schema):
-    """Like llm.with_structured_output(schema), with the fallback model.
-
-    The model must return an object matching the Pydantic `schema`
-    instead of free text, so we never have to parse text by hand.
-    """
+    """with_structured_output(schema), keeping the fallback model."""
     primary = primary_llm.with_structured_output(schema)
 
     if backup_llm is None:
@@ -91,15 +83,10 @@ def structured_with_fallback(schema):
 
 
 def bind_tools_with_fallback(tools):
-    """Like llm.bind_tools(tools), but keeps the fallback model too."""
+    """bind_tools(tools), keeping the fallback model."""
     primary = primary_llm.bind_tools(tools)
 
     if backup_llm is None:
         return primary
 
     return primary.with_fallbacks([backup_llm.bind_tools(tools)])
-
-
-def gen_response(messages: str) -> str:
-    response = llm.invoke(messages)
-    return response.content

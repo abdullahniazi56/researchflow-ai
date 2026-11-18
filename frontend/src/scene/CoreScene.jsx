@@ -4,7 +4,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import EvidenceBackground from "../EvidenceBackground";
+import EvidenceBackground from "./EvidenceBackground";
 import {
   coreFragmentShader,
   coreVertexShader,
@@ -14,21 +14,13 @@ import {
   particleVertexShader,
 } from "./shaders";
 
-/*
-  The 3D "research core" behind the app (Three.js / WebGL).
-
-  mode:
-    "idle"    calm, slow breathing
-    "busy"    research running: faster pulse, faster particles, more glow
-    "reading" a conversation is open: the scene dims so text stays readable
-*/
+// mode: idle | busy (research running) | reading (conversation open)
 
 const CYAN = new THREE.Color("#45e3d0");
 const VIOLET = new THREE.Color("#8f7bff");
 const WHITE = new THREE.Color("#e8ecff");
 const BACKGROUND = 0x05070d;
 
-// Per-mode targets; the scene eases towards them every frame.
 const MODES = {
   idle: { amp: 0.11, speed: 1, glow: 0.85, bloom: 0.55, beatRate: 0.9 },
   reading: { amp: 0.09, speed: 0.6, glow: 0.7, bloom: 0.4, beatRate: 0.7 },
@@ -60,7 +52,7 @@ function buildGalaxy(count) {
     const inDisk = i < count * 0.72;
 
     if (inDisk) {
-      // Spiral galaxy: points along 3 arms that curl with distance.
+      // 3-arm spiral
       const radius = 2.4 + Math.pow(Math.random(), 1.7) * 7.5;
       const branch = ((i % branches) / branches) * Math.PI * 2;
       const spin = radius * 0.42;
@@ -73,7 +65,7 @@ function buildGalaxy(count) {
 
       color.copy(CYAN).lerp(VIOLET, Math.min((radius - 2.4) / 7.5, 1));
     } else {
-      // Sparse dust in a large sphere for depth.
+      // background dust
       const r = 7 + Math.random() * 10;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
@@ -105,7 +97,6 @@ function createScene(container, modeRef) {
   const isSmall = window.innerWidth < 800;
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
 
-  // ---------- Renderer, scene, camera ----------
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(pixelRatio);
   renderer.setClearColor(BACKGROUND, 1);
@@ -122,7 +113,6 @@ function createScene(container, modeRef) {
   const root = new THREE.Group(); // everything, for mouse parallax
   scene.add(root);
 
-  // ---------- Core ----------
   const coreUniforms = {
     uTime: { value: 0 },
     uAmp: { value: MODES.idle.amp },
@@ -142,7 +132,6 @@ function createScene(container, modeRef) {
   );
   root.add(core);
 
-  // Thin wireframe shell around the core: a "lab instrument" look.
   const shell = new THREE.Mesh(
     new THREE.IcosahedronGeometry(1.32, 2),
     new THREE.MeshBasicMaterial({
@@ -156,7 +145,6 @@ function createScene(container, modeRef) {
   );
   root.add(shell);
 
-  // Soft halo behind the core.
   const haloUniforms = { uColor: { value: VIOLET.clone().lerp(CYAN, 0.35) }, uStrength: { value: 0.35 } };
   const halo = new THREE.Mesh(
     new THREE.PlaneGeometry(9, 9),
@@ -172,7 +160,6 @@ function createScene(container, modeRef) {
   halo.position.z = -1.5;
   root.add(halo);
 
-  // ---------- Galaxy of particles ----------
   const particleUniforms = {
     uTime: { value: 0 },
     uSize: { value: 26 },
@@ -193,7 +180,6 @@ function createScene(container, modeRef) {
   galaxy.rotation.z = 0.18;
   root.add(galaxy);
 
-  // ---------- Orbit rings with "sources" travelling on them ----------
   const rings = [];
   const ringSpecs = [
     { radius: 1.85, tilt: [1.25, 0.2, 0], speed: 0.32, color: CYAN, orbiters: 3 },
@@ -233,14 +219,12 @@ function createScene(container, modeRef) {
     rings.push({ group, orbiters, spec });
   }
 
-  // ---------- Post-processing: bloom ----------
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), MODES.idle.bloom, 0.5, 0.22);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
-  // ---------- Sizing (and centring the core in the main panel) ----------
   function resize() {
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -250,9 +234,7 @@ function createScene(container, modeRef) {
     camera.aspect = width / height;
     camera.position.z = width < 800 ? 13 : 10.5;
 
-    // Shift the view so the core sits in the middle of the area
-    // to the right of the sidebar, not the middle of the window.
-    // Also move it a little lower, between the headline and the question box.
+    // center the core in the area right of the sidebar, slightly low
     const shift = width > SIDEBAR_BREAKPOINT ? SIDEBAR_SPACE / 2 : 0;
     camera.setViewOffset(width, height, -shift, -height * 0.07, width, height);
     camera.updateProjectionMatrix();
@@ -260,7 +242,6 @@ function createScene(container, modeRef) {
   resize();
   window.addEventListener("resize", resize);
 
-  // ---------- Mouse parallax ----------
   const pointer = { x: 0, y: 0 };
   function onPointerMove(event) {
     pointer.x = event.clientX / window.innerWidth - 0.5;
@@ -268,7 +249,6 @@ function createScene(container, modeRef) {
   }
   window.addEventListener("pointermove", onPointerMove);
 
-  // ---------- Animation loop ----------
   const clock = new THREE.Clock();
   const live = { ...MODES.idle };
   let time = 0;
@@ -280,7 +260,6 @@ function createScene(container, modeRef) {
     const delta = Math.min(clock.getDelta(), 0.05);
     const target = MODES[modeRef.current] || MODES.idle;
 
-    // Smoothly move every value towards the current mode.
     for (const key of Object.keys(live)) {
       live[key] = ease(live[key], target[key], 0.04);
     }
@@ -288,7 +267,7 @@ function createScene(container, modeRef) {
     time += delta * live.speed;
     beatPhase += delta * live.beatRate * Math.PI * 2;
 
-    // Heartbeat: a sharp double pulse, then rest.
+    // double-pulse heartbeat
     const beat = Math.pow(Math.max(Math.sin(beatPhase), 0), 8)
       + 0.6 * Math.pow(Math.max(Math.sin(beatPhase - 0.55), 0), 10);
 
@@ -328,7 +307,6 @@ function createScene(container, modeRef) {
     frameId = requestAnimationFrame(frame);
   }
 
-  // ---------- Cleanup ----------
   return () => {
     cancelAnimationFrame(frameId);
     window.removeEventListener("resize", resize);
@@ -350,7 +328,6 @@ export default function CoreScene({ mode = "idle" }) {
   const modeRef = useRef(mode);
   const [supported] = useState(webglAvailable);
 
-  // The scene reads the mode every frame, so no rebuild is needed.
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);

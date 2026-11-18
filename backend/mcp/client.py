@@ -41,18 +41,11 @@ def parse_mcp_result(result):
     return parsed
 
 
-
 class MCPClient:
-    """Keeps ONE MCP server process running and reuses it.
+    """One long-lived MCP session shared by all tool calls.
 
-    Before, every tool call started a new server process, and each one
-    re-loaded the embedding model, the reranker and the Qdrant client.
-    That cost many seconds per call and made research take minutes.
-
-    Now a background task opens the stdio connection once and keeps it
-    open. All tool calls share that session (MCP supports concurrent
-    requests on one session). If the server process dies, the next call
-    starts a new one.
+    The server loads the models on start, so it is started once and
+    restarted only if it dies.
     """
 
     def __init__(self, call_timeout: float = 120):
@@ -64,8 +57,7 @@ class MCPClient:
         self._lock: asyncio.Lock | None = None
 
     async def _run_session(self):
-        # The stdio connection must be opened and closed in the same task,
-        # so this task owns it for its whole life.
+        # stdio_client has to be entered and exited in the same task
         try:
             async with stdio_client(server_params) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -77,7 +69,6 @@ class MCPClient:
             self._session = None
 
     async def start(self):
-        """Start the MCP server process if it is not running yet."""
         if self._lock is None:
             self._lock = asyncio.Lock()
 
@@ -101,7 +92,6 @@ class MCPClient:
 
             if self._task in done:
                 ready_waiter.cancel()
-                # Re-raise the real startup error (e.g. import failure).
                 self._task.result()
                 raise RuntimeError("MCP server stopped during startup.")
 
@@ -124,7 +114,6 @@ class MCPClient:
         return parse_mcp_result(result)
 
     async def close(self):
-        """Stop the MCP server process (called when the API shuts down)."""
         if self._stop is not None:
             self._stop.set()
 
@@ -136,7 +125,6 @@ class MCPClient:
 
         self._task = None
         self._session = None
-
 
 
 mcp_client = MCPClient()
@@ -184,28 +172,3 @@ def get_mcp_tools():
 
 async def close_mcp_client():
     await mcp_client.close()
-
-
-
-async def test_mcp_tools():
-    try:
-        tools = await mcp_client.list_tools()
-
-        for tool in tools:
-            print(f"Tool: {tool.name}")
-
-        result = await mcp_client.call_tool(
-            "web_search_tool",
-            {"question": "Nike company history and founding"}
-            )
-
-        print("\nWeb search result:")
-        print(result)
-
-    finally:
-        await close_mcp_client()
-
-
-
-if __name__ == "__main__":
-    asyncio.run(test_mcp_tools())

@@ -1,4 +1,4 @@
-"""Turn an uploaded PDF into chunks and store them in Qdrant."""
+"""PDF -> chunks -> Qdrant."""
 
 from pathlib import Path
 
@@ -18,19 +18,16 @@ def ingest_pdf(
     original_filename: str,
     document_id: str,
 ) -> dict:
-    """Load one PDF, split it into chunks and add them to Qdrant."""
 
     loader = PyPDFLoader(str(file_path))
     pages = loader.load()
 
     for page in pages:
-        # The original name is shown in citations, e.g. [Source: nike.pdf, Page: 3]
         page.metadata["filename"] = original_filename
         page.metadata["document_id"] = document_id
 
     chunks = splitter.split_documents(pages)
 
-    # Chunks that are only whitespace are useless for search.
     chunks = [chunk for chunk in chunks if chunk.page_content.strip()]
 
     if chunks:
@@ -44,7 +41,6 @@ def ingest_pdf(
 
 
 def delete_document_chunks(document_id: str) -> None:
-    """Remove every chunk of one document from Qdrant."""
     from qdrant_client import models
 
     from backend.rag.vectorstore import COLLECTION_NAME, client

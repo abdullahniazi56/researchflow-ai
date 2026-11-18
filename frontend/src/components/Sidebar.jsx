@@ -1,7 +1,5 @@
 import { ClockIcon, FileIcon, PenIcon, PlusIcon, TrashIcon } from "./Icons";
 
-/* Floating glass navigation: new research, history and documents. */
-
 export default function Sidebar({
   open,
   busy,

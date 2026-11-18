@@ -1,10 +1,6 @@
-"""Prompts used by the research agent."""
-
 from langchain_core.prompts import ChatPromptTemplate
 
-# Planner: turns the user's message (and, for follow-ups, the recent
-# conversation) into a standalone question plus focused sub-questions.
-# The model replies with a ResearchPlan object (structured output).
+# planner -> ResearchPlan (structured output)
 research_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -30,7 +26,6 @@ Latest message:
 ])
 
 
-# Answer writer: grounded in evidence, cites evidence IDs like [E1].
 answer_prompt = ChatPromptTemplate.from_messages([
     (
         "system",

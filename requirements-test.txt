@@ -1,6 +1,4 @@
-# Light dependencies for the unit tests (CI). The tests replace the
-# embedding model, reranker, Qdrant, Tavily and the LLMs with fakes,
-# so PyTorch and sentence-transformers are not needed here.
+# test deps only; models, qdrant, tavily and LLMs are faked in tests
 python-dotenv==1.2.3
 langchain-core==1.6.3
 langchain-community==0.4.2

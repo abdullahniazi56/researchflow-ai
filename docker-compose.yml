@@ -1,8 +1,4 @@
-# Run the whole stack:   docker compose up --build
-# Then open             http://localhost:5173
-#
-# Needs a .env file in the project root with at least
-# GOOGLE_API_KEY (or MISTRAL_API_KEY), TAVILY_API_KEY and POSTGRES_PASSWORD.
+# local stack: docker compose up --build  ->  http://localhost:5173
 
 services:
   postgres:
@@ -30,7 +26,6 @@ services:
     build: .
     env_file: .env
     environment:
-      # Inside Docker, services reach each other by name.
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       QDRANT_URL: http://qdrant:6333

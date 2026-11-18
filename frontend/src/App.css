@@ -1,8 +1,3 @@
-/* =========================================================
-   ResearchFlow AI — design system
-   Deep-space research lab: glass panels over a live 3D core.
-   ========================================================= */
-
 @property --angle {
   syntax: "<angle>";
   initial-value: 0deg;
@@ -102,7 +97,7 @@ button:disabled {
   background: transparent;
 }
 
-/* ---------- 3D scene layer ---------- */
+/* 3D scene layer */
 
 .core-scene {
   position: fixed;
@@ -118,7 +113,6 @@ button:disabled {
   height: 100%;
 }
 
-/* While reading a conversation the scene steps back. */
 .core-scene--reading {
   opacity: 0.32;
 }
@@ -157,7 +151,7 @@ button:disabled {
   min-height: 100vh;
 }
 
-/* ---------- Shared controls ---------- */
+/* Shared controls */
 
 .icon-button {
   display: inline-grid;
@@ -232,9 +226,7 @@ button:disabled {
   border-color: var(--danger);
 }
 
-/* =========================================================
-   Sidebar
-   ========================================================= */
+/* Sidebar */
 
 .sidebar {
   position: fixed;
@@ -263,7 +255,6 @@ button:disabled {
   padding: 2px 8px 18px;
 }
 
-/* Small living orb: a spinning conic gradient echoing the 3D core. */
 .brand-orb {
   position: relative;
   width: 26px;
@@ -297,7 +288,6 @@ button:disabled {
   font-size: 10.5px;
 }
 
-/* Gradient-bordered primary action */
 .new-research {
   display: flex;
   align-items: center;
@@ -365,7 +355,14 @@ button:disabled {
   align-content: start;
   gap: 2px;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+.history-list,
+.document-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 165, 210, 0.18) transparent;
 }
 
 .history-row {
@@ -434,6 +431,7 @@ button:disabled {
   max-height: 190px;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   list-style: none;
 }
@@ -537,9 +535,7 @@ button:disabled {
   font-size: 10.5px;
 }
 
-/* =========================================================
-   Main panel
-   ========================================================= */
+/* Main panel */
 
 .main-panel {
   position: relative;
@@ -562,7 +558,10 @@ button:disabled {
 }
 
 .has-conversation .topbar {
-  background: linear-gradient(to bottom, rgba(5, 7, 13, 0.85), rgba(5, 7, 13, 0));
+  border-bottom: 1px solid var(--line);
+  background: rgba(5, 7, 13, 0.78);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
 }
 
 .mobile-menu {
@@ -619,7 +618,7 @@ button:disabled {
   padding: 0 28px;
 }
 
-/* ---------- Home: hero above, composer below, core in between ---------- */
+/* Home */
 
 .is-home .workspace {
   justify-content: space-between;
@@ -649,7 +648,6 @@ button:disabled {
   animation-delay: 0.15s;
 }
 
-/* Second line: iridescent text with a slow sheen */
 .hero-line-accent {
   padding-bottom: 0.08em;
   background: linear-gradient(100deg, #45e3d0 0%, #a99cff 35%, #ffffff 50%, #8f7bff 65%, #45e3d0 100%);
@@ -699,9 +697,7 @@ button:disabled {
   color: var(--cyan);
 }
 
-/* =========================================================
-   Composer
-   ========================================================= */
+/* Composer */
 
 .composer {
   position: relative;
@@ -713,7 +709,7 @@ button:disabled {
   -webkit-backdrop-filter: var(--blur);
 }
 
-/* Animated light running around the edge (focus / busy) */
+/* running light on the border while focused / busy */
 .composer::before {
   content: "";
   position: absolute;
@@ -862,9 +858,7 @@ button:disabled {
   background: linear-gradient(to top, var(--bg) 55%, rgba(5, 7, 13, 0));
 }
 
-/* =========================================================
-   Conversation
-   ========================================================= */
+/* Conversation */
 
 .thread {
   display: flex;
@@ -1034,7 +1028,7 @@ a.cite:hover {
   border-color: currentColor;
 }
 
-/* ---------- Sources ---------- */
+/* Sources */
 
 .source-list {
   margin-top: 16px;
@@ -1156,7 +1150,43 @@ a.cite:hover {
   text-decoration: underline;
 }
 
-/* ---------- Live agent timeline ---------- */
+.other-sources {
+  margin-top: 10px;
+}
+
+.other-sources > summary {
+  display: inline-flex;
+  padding: 4px 2px;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 12.5px;
+  list-style: none;
+}
+
+.other-sources > summary::-webkit-details-marker {
+  display: none;
+}
+
+.other-sources > summary::before {
+  content: "+";
+  width: 14px;
+  color: var(--muted);
+}
+
+.other-sources[open] > summary::before {
+  content: "−";
+}
+
+.other-sources > summary:hover {
+  color: var(--muted);
+}
+
+.other-sources ol {
+  margin-top: 8px;
+  opacity: 0.8;
+}
+
+/* Live agent timeline */
 
 .agent-panel {
   padding: 18px 20px;
@@ -1193,7 +1223,6 @@ a.cite:hover {
   gap: 12px;
 }
 
-/* Connector line between steps */
 .agent-timeline li + li::before {
   content: "";
   position: absolute;
@@ -1238,7 +1267,6 @@ a.cite:hover {
   font-size: 13.5px;
 }
 
-/* Shimmering text on the step in progress */
 .is-active .timeline-title {
   background: linear-gradient(90deg, var(--text) 0%, var(--text) 40%, var(--cyan) 50%, var(--text) 60%, var(--text) 100%);
   background-size: 200% 100%;
@@ -1263,7 +1291,7 @@ a.cite:hover {
   font-size: 11.5px;
 }
 
-/* ---------- Error ---------- */
+/* Error */
 
 .error-panel {
   display: flex;
@@ -1285,9 +1313,7 @@ a.cite:hover {
   color: #f2b3b3;
 }
 
-/* =========================================================
-   Responsive
-   ========================================================= */
+/* Responsive */
 
 .mobile-backdrop {
   display: none;
@@ -1349,9 +1375,7 @@ a.cite:hover {
   }
 }
 
-/* =========================================================
-   Motion
-   ========================================================= */
+/* Motion */
 
 @keyframes spin {
   to {

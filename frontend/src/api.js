@@ -1,10 +1,8 @@
 import axios from "axios";
 
-// Configure in frontend/.env (see .env.example):
-//   VITE_API_URL=http://127.0.0.1:8000
-//   VITE_API_KEY=...   (only if the backend has API_KEY set)
+// dev: /api is proxied by vite (see vite.config.js)
 export const API_URL = (
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"
+  import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "/api" : "http://127.0.0.1:8000")
 ).replace(/\/$/, "");
 
 const API_KEY = import.meta.env.VITE_API_KEY || "";
@@ -24,17 +22,21 @@ export class ApiError extends Error {
   }
 }
 
-/** Turn any axios/fetch error into a short, useful message. */
 export function toApiError(err, fallback = "Something went wrong.") {
   if (err instanceof ApiError) return err;
 
+  // behind the vite proxy a dead backend is a bare 5xx, not a network error
+  const proxyDown =
+    err?.response?.status >= 500 && !err?.response?.data?.detail;
+
   const noResponse =
+    proxyDown ||
     (err?.isAxiosError && !err.response) ||
     (err instanceof TypeError && /fetch/i.test(err.message));
 
   if (noResponse) {
     return new ApiError(
-      `Can't reach the ResearchFlow server at ${API_URL}. ` +
+      "Can't reach the ResearchFlow server. " +
         "Start the backend (uvicorn backend.main:app --reload) and try again.",
       { offline: true }
     );
@@ -46,12 +48,7 @@ export function toApiError(err, fallback = "Something went wrong.") {
   );
 }
 
-// ---------- Research ----------
-
-/**
- * Run research and receive live progress (Server-Sent Events).
- * onEvent is called for every event: session, step, result.
- */
+// POST + SSE, so EventSource can't be used; read the stream by hand
 export async function streamResearch(
   { question, sessionId, documentIds },
   onEvent,
@@ -76,13 +73,18 @@ export async function streamResearch(
   }
 
   if (!response.ok) {
-    let detail = `Request failed (${response.status})`;
+    let detail = null;
     try {
-      detail = (await response.json()).detail || detail;
+      detail = (await response.json()).detail || null;
     } catch {
-      // keep the generic message
+      // not a FastAPI error body
     }
-    throw new ApiError(detail, { status: response.status });
+    if (!detail && response.status >= 500) {
+      throw toApiError(new TypeError("fetch failed"));
+    }
+    throw new ApiError(detail || `Request failed (${response.status})`, {
+      status: response.status,
+    });
   }
 
   const reader = response.body.getReader();
@@ -109,8 +111,6 @@ export async function streamResearch(
   }
 }
 
-// ---------- Sessions ----------
-
 export async function getSessions() {
   const response = await api.get("/sessions");
   return response.data.sessions;
@@ -131,15 +131,11 @@ export async function renameSession(sessionId, title) {
   return response.data;
 }
 
-// ---------- Documents ----------
-
 export async function uploadDocument(file) {
   const formData = new FormData();
-  // "file" must match the FastAPI parameter name in upload_document()
   formData.append("file", file);
 
-  // Override the default JSON header, otherwise axios would
-  // convert the FormData into JSON and the file would not be sent.
+  // the instance default is JSON, which would serialize the FormData
   const response = await api.post("/documents/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });

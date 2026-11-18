@@ -1,8 +1,4 @@
-"""Shared embedding model and Qdrant vector store.
-
-Every module that needs the vector store (retrieval, ingestion)
-imports it from here, so the model is configured in one place.
-"""
+"""Embedding model and Qdrant store shared by retrieval and ingestion."""
 
 import logging
 import os
@@ -21,7 +17,6 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "researchflow_documents")
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-# all-MiniLM-L6-v2 turns every text into a vector of 384 numbers.
 EMBEDDING_SIZE = 384
 
 embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
@@ -29,7 +24,6 @@ client = QdrantClient(url=QDRANT_URL)
 
 
 def ensure_collection() -> None:
-    """Create the collection on first run if it does not exist yet."""
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(
             collection_name=COLLECTION_NAME,
@@ -40,9 +34,7 @@ def ensure_collection() -> None:
         )
 
 
-# Try to prepare the collection at startup, but don't crash the whole
-# server if Qdrant is not running yet. Ingestion calls ensure_collection()
-# again, and searches will report a clear error until Qdrant is up.
+# don't take the API down if qdrant isn't up yet; ingestion retries this
 try:
     ensure_collection()
 except Exception as exc:
@@ -57,6 +49,6 @@ vector_store = QdrantVectorStore(
     client=client,
     collection_name=COLLECTION_NAME,
     embedding=embeddings,
-    # Skip the startup check that needs a live Qdrant connection.
+    # no qdrant round-trip at import time
     validate_collection_config=False,
 )

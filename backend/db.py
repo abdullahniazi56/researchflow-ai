@@ -91,7 +91,6 @@ def create_research_source(
             return cur.fetchone()[0]
 
 
-
 def get_messages_with_sources(session_id: str):
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -149,7 +148,6 @@ def get_messages_with_sources(session_id: str):
             })
 
     return list(messages.values())
-
 
 
 def get_research_session():
@@ -251,20 +249,12 @@ def research_session_exists(session_id: str):
             return cur.fetchone() is not None
 
 
-# --------------------------------------------------
-# SCHEMA
-# --------------------------------------------------
-
 def init_db():
     """Create any missing tables (existing tables are left untouched)."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-
-# --------------------------------------------------
-# UPLOADED DOCUMENTS
-# --------------------------------------------------
 
 def document_exists(file_hash: str) -> bool:
     with get_connection() as conn:
@@ -328,10 +318,3 @@ def list_documents():
                 }
                 for record in cur.fetchall()
             ]
-
-
-if __name__ == "__main__":
-    records = get_messages_with_sources("session-python-001")
-
-    for record in records:
-     print(record)

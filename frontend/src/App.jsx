@@ -17,25 +17,22 @@ import Sidebar from "./components/Sidebar";
 import { GlobeIcon, LayersIcon, MenuIcon, ShieldIcon } from "./components/Icons";
 import "./App.css";
 
-// The 3D scene (Three.js) loads as a separate chunk, so the UI appears instantly.
+// three.js is big, load it as its own chunk
 const CoreScene = lazy(() => import("./scene/CoreScene"));
 
 const DEFAULT_HINT = { kind: "hint", text: "Enter to send · Shift+Enter for a new line" };
 
 function App() {
-  // Sidebar data
   const [sessions, setSessions] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [selectedDocIds, setSelectedDocIds] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Current conversation
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [activeTitle, setActiveTitle] = useState("");
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
 
-  // Request state
   const [loading, setLoading] = useState(false);
   const [steps, setSteps] = useState([]);
   const [elapsed, setElapsed] = useState(0);
@@ -69,7 +66,6 @@ function App() {
       const data = await getDocuments();
       const docs = Array.isArray(data) ? data : [];
       setDocuments(docs);
-      // Forget selections of documents that no longer exist.
       setSelectedDocIds((ids) =>
         ids.filter((id) => docs.some((d) => d.document_id === id))
       );
@@ -78,7 +74,6 @@ function App() {
     }
   }, []);
 
-  // First load: state is only set in promise callbacks, after the data arrives.
   useEffect(() => {
     let active = true;
 
@@ -103,7 +98,6 @@ function App() {
     };
   }, []);
 
-  // Seconds counter while research runs.
   useEffect(() => {
     if (!loading) return undefined;
     const startedAt = Date.now();
@@ -117,12 +111,9 @@ function App() {
     };
   }, [loading]);
 
-  // Keep the newest message in view.
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, steps]);
-
-  // ---------- Research ----------
 
   async function handleSubmit() {
     const text = question.trim();
@@ -199,8 +190,6 @@ function App() {
     abortRef.current?.abort();
   }
 
-  // ---------- Sessions ----------
-
   function handleNewResearch() {
     if (loading) return;
     setActiveSessionId(null);
@@ -253,8 +242,6 @@ function App() {
     }
   }
 
-  // ---------- Documents ----------
-
   async function handleAttach(file) {
     if (file.type !== "application/pdf") {
       setComposerStatus({ kind: "error", text: "Please choose a PDF file." });
@@ -303,8 +290,6 @@ function App() {
       handleError(err, "Could not delete the document.");
     }
   }
-
-  // ---------- Render ----------
 
   const hasConversation = messages.length > 0 || loading;
   const sceneMode = loading ? "busy" : hasConversation ? "reading" : "idle";

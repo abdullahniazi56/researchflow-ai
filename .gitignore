@@ -14,7 +14,7 @@ frontend/dist/
 # User uploads
 data/uploads/
 
-# Local backups
+# Local
 _backup_*/
 
 # LLM response cache
